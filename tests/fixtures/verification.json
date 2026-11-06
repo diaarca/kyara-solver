@@ -1,0 +1,78 @@
+{
+  "boosters": {
+    "a": {
+      "evidence": "Synthetic test definition; independent draws with replacement. Not live Kyara mechanics.",
+      "mechanics_sha256": "216a4be84200523ecd2c8c7b569022dcf227b5f1ab76296bb7caf93a3313258c",
+      "model": {
+        "slots": [
+          {
+            "draws": 2,
+            "probabilities": {
+              "1": 0.5,
+              "4": 0.5
+            }
+          }
+        ],
+        "type": "independent_slots"
+      },
+      "pack_sha256": "95cebfca73e444bb1d4b2cb0e349e75ead75995fd83f92afc876ec7540bc008d",
+      "pool_complete": true,
+      "verified_at": "2026-11-05T12:00:00+00:00"
+    },
+    "b": {
+      "evidence": "Synthetic test definition; independent draws with replacement. Not live Kyara mechanics.",
+      "mechanics_sha256": "07ec76f9dd2a17c7a14756532650ac9611edc1998d648d8b9d7fe1fe867643cd",
+      "model": {
+        "slots": [
+          {
+            "draws": 2,
+            "probabilities": {
+              "1": 0.5,
+              "2": 0.5
+            }
+          }
+        ],
+        "type": "independent_slots"
+      },
+      "pack_sha256": "bcb81e9ab01e97ff4f1ff93cd6955a9e1f3fb5a240e034d244b6c49862c9a8ae",
+      "pool_complete": true,
+      "verified_at": "2026-11-05T12:00:00+00:00"
+    },
+    "c": {
+      "evidence": "Synthetic test definition; independent draws with replacement. Not live Kyara mechanics.",
+      "mechanics_sha256": "cd47d9ad79506af7b206ae057ac3b7dcdc91676e71f5c73554a95127df0166a8",
+      "model": {
+        "slots": [
+          {
+            "draws": 1,
+            "probabilities": {
+              "3": 1
+            }
+          }
+        ],
+        "type": "independent_slots"
+      },
+      "pack_sha256": "81cf558cb1c76e32913e68fcba053214d882b0945848e0e94de1fd136b05cd4f",
+      "pool_complete": true,
+      "verified_at": "2026-11-05T12:00:00+00:00"
+    },
+    "f": {
+      "evidence": "Synthetic test definition; independent draws with replacement. Not live Kyara mechanics.",
+      "mechanics_sha256": "68c9a2e1253ad71f8927fc4263e3b6d32a1af22553d5ead8c8250f951a551fea",
+      "model": {
+        "slots": [
+          {
+            "draws": 1,
+            "probabilities": {
+              "2": 1
+            }
+          }
+        ],
+        "type": "independent_slots"
+      },
+      "pack_sha256": "ba9fd9974b459e99fda10aa0a8fd23a8fcfdddc9e4e05cd9dbd95ccceb759aab",
+      "pool_complete": true,
+      "verified_at": "2026-11-05T12:00:00+00:00"
+    }
+  }
+}

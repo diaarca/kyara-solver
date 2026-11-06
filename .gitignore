@@ -1,0 +1,11 @@
+build/
+result
+result-*
+data/
+/owned.json
+__pycache__/
+.pytest_cache/
+*.egg-info/
+dist/
+.venv/
+*.har

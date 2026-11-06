@@ -1,0 +1,29 @@
+{
+  "synthetic": true,
+  "collected_at": "2026-11-05T12:00:00+00:00",
+  "catalog": [
+    {"id": 1, "name": "Fixture Asta", "series": "Black Clover", "rarity": "R"},
+    {"id": 2, "name": "Fixture Noelle", "series": "Black Clover", "rarity": "R"},
+    {"id": 3, "name": "Fixture MaoMao", "series": "MaoMao", "rarity": "E"},
+    {"id": 4, "name": "Fixture Other", "series": "Other", "rarity": "M"}
+  ],
+  "packs": [
+    {"id": "a", "name": "Profit pack", "chakraPrice": 20},
+    {"id": "b", "name": "Clover pack", "chakraPrice": 10},
+    {"id": "c", "name": "MaoMao pack", "chakraPrice": 4},
+    {"id": "f", "name": "Free-compatible pack", "chakraPrice": 5, "usesFreePacks": true},
+    {"id": "reward", "name": "Reward pack", "chakraPrice": 0, "grantOnly": true}
+  ],
+  "characters": {
+    "1": {"dropChance": {"a": 0.75, "b": 0.75}},
+    "2": {"dropChance": {"b": 0.75, "f": 1}},
+    "3": {"dropChance": {"c": 1}},
+    "4": {"dropChance": {"a": 0.75}}
+  },
+  "prices": {
+    "1": {"median7d": 10, "median30d": 8, "salesCount30d": 50},
+    "2": {"median7d": 6, "median30d": 5, "salesCount30d": 80},
+    "3": {"median7d": 20, "median30d": 18, "salesCount30d": 10},
+    "4": {"median7d": 100, "median30d": 90, "salesCount30d": 3}
+  }
+}
