@@ -1,7 +1,7 @@
 """Read-only collector. Unknown booster mechanics are never inferred.
 
 Uses only the Python standard library; API responses can also be imported from
-a browser. See docs/data.md for the raw and verification formats.
+a browser. See docs/model.md for the raw and verification formats.
 """
 from __future__ import annotations
 
@@ -468,7 +468,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Update Kyara snapshots; never bypasses access denials.")
     parser.add_argument("--database", default="data/kyara.sqlite")
     parser.add_argument("--output", default="data/latest.json")
-    parser.add_argument("--verification", help="Verified booster models JSON (see docs/data.md)")
+    parser.add_argument("--verification", help="Verified booster models JSON (see docs/model.md)")
     parser.add_argument("--verify-baseline", action="append", default=[], metavar="BOOSTER_ID",
                         help="Verify normal-opening base-weight model against every captured card's published odds")
     parser.add_argument("--verification-output", help="Save the verification used for this snapshot")
@@ -477,6 +477,7 @@ def main(argv=None):
     imports.add_argument("--import-har", help="Import allowlisted response bodies from a browser HAR")
     imports.add_argument("--refresh-prices-from", help="Reuse metadata from a raw snapshot and refresh explicit medians in batches")
     imports.add_argument("--full-refresh", action="store_true", help="Collect catalogue, all pools, batch medians, and representative odds samples")
+    imports.add_argument("--rebirth-state", metavar="PATH", help="Capture current rebirth rarity requirements and holdings to PATH; skip price collection")
     parser.add_argument("--verify-published-baselines", action="store_true", help="Validate published rates and per-rarity samples for all boosters; report contradictions")
     parser.add_argument("--transport", choices=("auto", "http", "browser"), default="auto", help="Auto uses the authorized macOS browser for batch workflows; HTTP elsewhere")
     parser.add_argument("--batch-size", type=int, default=200)
@@ -491,7 +492,7 @@ def main(argv=None):
         if not math.isfinite(args.interval) or args.interval < 1:
             raise DataError("--interval must be finite and at least 1 second")
         implicit = not any((args.import_raw, args.import_har, args.refresh_prices_from,
-                            args.full_refresh, args.catalog_only, args.booster_id, args.fingerprints))
+                            args.full_refresh, args.catalog_only, args.booster_id, args.fingerprints, args.rebirth_state))
         if implicit:
             if Path("data/raw.json").exists():
                 args.refresh_prices_from = "data/raw.json"
@@ -499,14 +500,29 @@ def main(argv=None):
                 args.full_refresh = True
             args.raw_output = args.raw_output or "data/raw.json"
         if args.transport == "auto":
-            args.transport = "browser" if sys.platform == "darwin" and (args.full_refresh or args.refresh_prices_from) else "http"
+            args.transport = "browser" if sys.platform == "darwin" and (args.full_refresh or args.refresh_prices_from or args.rebirth_state) else "http"
         if (args.full_refresh or args.refresh_prices_from) and not args.verification and Path("data/verification.json").exists():
             args.verification = "data/verification.json"
         if args.full_refresh and not args.verification_output:
             args.verification_output = "data/verification.json"
         verification = json.loads(Path(args.verification).read_text()) if args.verification else {"boosters": {}}
-        if args.transport == "browser" and not (args.refresh_prices_from or args.full_refresh):
-            raise DataError("Use browser transport with --refresh-prices-from or --full-refresh")
+        if args.transport == "browser" and not (args.refresh_prices_from or args.full_refresh or args.rebirth_state):
+            raise DataError("Use browser transport with --refresh-prices-from, --full-refresh, or --rebirth-state")
+        if args.rebirth_state:
+            from .rebirth import collect_rebirth
+            raw_path = Path("data/raw.json")
+            if not raw_path.exists():
+                raise DataError("Capture a catalogue with scrap --full-refresh before syncing rebirth state")
+            catalog = json.loads(raw_path.read_text())["catalog"]
+            opener = None
+            if args.transport == "browser":
+                from .browser import BrowserOpener
+                opener = BrowserOpener()
+            with database(args.database) as db:
+                state = collect_rebirth(Client(db, args.interval, opener=opener), catalog)
+            atomic_json(args.rebirth_state, state)
+            print(f"Saved rarity-count state for rebirth {state['next_rebirth']} to {args.rebirth_state}")
+            return 0
         imported = import_har(args.import_har) if args.import_har else (
             json.loads(Path(args.import_raw).read_text()) if args.import_raw else None)
         if args.fingerprints:

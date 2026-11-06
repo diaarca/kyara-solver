@@ -58,13 +58,15 @@ class BrowserOpener:
         url = urlsplit(request.full_url)
         batch = (url.path == "/api/me/collection/prices" and
                  re.fullmatch(r"ids=[0-9]+(?:,[0-9]+){0,199}", url.query))
+        rebirth = ((url.path == "/api/me/renaissance" and url.query == "fresh=1")
+                   or (url.path == "/api/me/collection" and url.query == "lean=1"))
         public_data = (not url.query and (url.path in ("/api/characters", "/api/packs", "/api/rates", "/api/config")
             or re.fullmatch(r"/api/packs/[A-Za-z0-9_-]+/characters", url.path)
             or re.fullmatch(r"/api/characters/[0-9]+", url.path)
             or re.fullmatch(r"/api/market/prices/[0-9]+", url.path)))
         if (url.scheme != "https" or url.netloc != "kyara.games" or request.get_method() != "GET"
-                or not (batch or public_data)):
-            raise DataError("Browser transport permits only read-only Kyara catalogue, pool, odds, and median-price routes")
+                or not (batch or public_data or rebirth)):
+            raise DataError("Browser transport permits only read-only Kyara data routes")
         key = "__kyara_price_request_" + uuid.uuid4().hex
         path = url.path + "?" + url.query
         start = f'''(() => {{

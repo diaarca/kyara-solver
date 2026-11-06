@@ -31,9 +31,7 @@
             version = "0.1.0";
             src = source;
             nativeBuildInputs = [ pkgs.cmake pkgs.ninja pkgs.pkg-config ];
-            # The cached nixpkgs OR-Tools package exports its backend targets in
-            # its CMake config. Supply their headers/libraries even though our
-            # executable uses only CP-SAT; no backend is installed by the user.
+            # OR-Tools' CMake config also requires its bundled backend targets.
             buildInputs = [
               pkgs.or-tools pkgs.nlohmann_json pkgs.zlib pkgs.bzip2 pkgs.eigen
               pkgs.cbc pkgs.cgl pkgs.clp pkgs.osi pkgs.coin-utils pkgs.glpk
@@ -54,8 +52,6 @@
         inherit (p) collector solver;
         default = p.solver;
       });
-      # nix run .#scrap -- --help: collect live responses or import browser JSON.
-      # nix run .#solve -- --help: rank, list universes, and manage owned IDs.
       apps = eachSystem (system: let p = forSystem system; in {
         scrap = { type = "app"; program = "${p.collector}/bin/scrap"; meta.description = "Update the Kyara database and JSON snapshot"; };
         solve = { type = "app"; program = "${p.solver}/bin/solve"; meta.description = "Choose a booster using profit and collection objectives"; };
@@ -67,12 +63,19 @@
       devShells = eachSystem (system: let p = forSystem system; in {
         default = p.pkgs.mkShell {
           inputsFrom = [ p.solver p.collector ];
-          packages = [ p.pkgs.python3 p.pkgs.python3Packages.setuptools p.collector p.solver ];
+          # Executable wrappers also work with direnv, which does not export
+          # shell functions. Keep apps pointing at the actual packages above.
+          packages = [
+            p.pkgs.python3 p.pkgs.python3Packages.setuptools
+            (p.pkgs.writeShellScriptBin "scrap" ''
+              exec nix run .#scrap -- "$@"
+            '')
+            (p.pkgs.writeShellScriptBin "solve" ''
+              exec nix run .#solve -- "$@"
+            '')
+          ];
           shellHook = ''
             export PYTHONPATH="$PWD/python''${PYTHONPATH:+:$PYTHONPATH}"
-            echo 'scrap --help: update data; solve --help: rank boosters'
-            echo 'Build local changes: cmake -S . -B build -G Ninja && cmake --build build'
-            echo 'Test local changes: ctest --test-dir build --output-on-failure'
           '';
         };
       });

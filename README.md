@@ -1,121 +1,93 @@
 # Kyara Solver
 
-Collect Kyara card prices with Python and rank boosters with a C++20 OR-Tools
-CP-SAT model. Optimize expected resale profit, completion of selected universes,
-or a weighted combination. See [the mathematical model](docs/model.md) and
-[the collection/data reference](docs/data.md).
+Python collects card prices and booster odds; C++20 / OR-Tools CP-SAT ranks
+boosters by profit, universe completion, or rebirth progress.
 
-## Environment
-
-Nix with flakes enabled manages Python, the C++ compiler, CMake, OR-Tools, and
-all project dependencies through `flake.lock`.
+## Setup
 
 ```sh
 nix develop
-# Optional: automatically enter the environment using direnv.
-# .envrc contains: use flake
+# Or use direnv with an .envrc containing: use flake
 direnv allow
 ```
 
-Git-backed flakes include files known to Git. Register new source files with
-`git add` or `git add -N` before loading the flake. The tested platform is ARM
-macOS; Intel macOS and ARM/Intel Linux outputs are also defined.
+Run commands from the project root. `scrap` and `solve` wrap `nix run .#scrap --`
+and `nix run .#solve --`: changed sources rebuild automatically; unchanged builds
+are cached. Use `direnv reload` after environment changes. New source files must
+be known to Git (`git add` or `git add -N`). Dependencies are pinned in `flake.lock`.
+ARM macOS is tested; Intel macOS and ARM/Intel Linux outputs are also defined.
 
-## Collect and update
+## Collect
 
-For the macOS browser transport, keep Kyara open and logged in to Vivaldi.
-Allow macOS automation access and enable Vivaldi's **Privacy → Apple Events →
-Allow JavaScript from Apple Events** setting. Credentials stay inside the browser.
+On macOS, keep Kyara logged in to Vivaldi and enable **Settings → Privacy →
+Apple Events → Allow JavaScript from Apple Events**, with macOS automation access.
+Credentials stay in the browser. The default transport uses Vivaldi on macOS;
+HTTP elsewhere may require `KYARA_TOKEN` and `KYARA_DEVICE_ID`.
 
 ```sh
-# Refresh prices; bootstrap a complete dataset if no raw snapshot exists.
-nix run .#scrap
-
-# Rebuild catalogue, pools, rates, and validation after metadata changes.
-nix run .#scrap -- --full-refresh --transport browser \
-  --raw-output data/raw.json --verification-output data/verification.json
+scrap                                # Refresh prices; full collection on first run
+scrap --full-refresh                 # Refresh catalogue, pools, odds, and prices
+scrap --rebirth-state data/rebirth.json  # Sync holdings and rebirth targets only
 ```
 
-A price-only refresh reuses metadata and retrieves explicit 7-/30-day medians
-in batches of 200. The full 6,736-card catalogue was refreshed in about 34 seconds
-in a measured run. Rebuild metadata after the daily rotation or changes to packs
-and probability rules. `--transport auto` uses the macOS browser for batch
-workflows and HTTP elsewhere. Direct HTTP access depends on Kyara's access rules.
+Prices are fetched in batches of 200. Refresh metadata after pool/rule changes;
+refresh rebirth state after openings, trades, or rebirth. Collection is read-only.
 
-Outputs are `data/kyara.sqlite`, `data/raw.json`, `data/verification.json`,
-`data/latest.json`, and archived snapshots under `data/snapshots/`. Keep these
-local files to replay a result. Failed collection leaves the latest completed
-JSON export intact. Use `--help` for imports, custom paths, and request spacing.
+| File | Purpose |
+| --- | --- |
+| `data/raw.json` | Latest API response bundle, reused for price refreshes |
+| `data/verification.json` | Probability models and validation evidence |
+| `data/latest.json` | Solver input |
+| `data/snapshots/` | Archived solver inputs |
+| `data/kyara.sqlite` | Response checkpoints and snapshot history |
+| `data/rebirth.json` | Optional rebirth targets and unique holdings |
+
+Data stays local and ignored by Git. Failed collection preserves the last completed
+JSON export. Save the dataset, holdings, and lock file to replay a result.
 
 ## Solve
 
 ```sh
-# Rank purchases by estimated profit, or rank free-token openings.
-nix run .#solve
-nix run .#solve -- --purchase-mode free
-
-# List canonical universe names.
-nix run .#solve -- universes
-
-# Balance profit and completion; repeat --universe to select several.
-nix run .#solve -- --purchase-mode free \
-  --universe "Black Clover" --universe "The Apothecary Diaries" \
+solve                                # Paid boosters, expected profit
+solve --purchase-mode free           # Free-token boosters, expected profit
+solve universes                      # Available universe names
+solve --purchase-mode free --universe "Black Clover" \
   --owned owned.json --profit-weight 0.5
-
-# Add, remove, or inspect owned card IDs.
-nix run .#solve -- owned add --owned owned.json --card-id 123
-nix run .#solve -- owned remove --owned owned.json --card-id 123
-nix run .#solve -- owned list --owned owned.json
-
-# Replay a saved dataset, choose the median window, and account for selling fees.
-nix run .#solve -- --dataset data/snapshots/SNAPSHOT_ID.json \
-  --median-window 30d --fee 0.05 --format json
+solve --purchase-mode free --rebirth-state data/rebirth.json
+solve owned add --owned owned.json --card-id 123
+solve owned remove --owned owned.json --card-id 123
+solve owned list --owned owned.json
 ```
 
-`--profit-weight 1` is profit-only, `0` is completion-only, and `0.5` gives equal
-influence after normalization. Completion requires a universe selection and
-maximizes expected **distinct missing cards per opening**. Omit `--owned` to
-start with no cards marked owned. Owned cards still contribute resale value.
+`--profit-weight`: **1** profit, **0** progress, **0.5** equal normalized influence.
+Repeat `--universe` for several universes. Completion rewards distinct missing
+cards; owned cards still have resale value. Rebirth rewards the expected fraction
+of each unfinished rarity gap filled, capped at its target. It defaults to weight
+0, includes holdings, and cannot be combined with `--owned` or `--universe`.
+Only rarity requirements are considered; this does not establish rebirth eligibility.
 
-Paid mode subtracts chakra cost. Free mode considers packs accepting free tokens
-and zero-cost packs, with opening cost zero; it does not inspect your token
-balance. Missing prices exclude a pack whenever profit has positive weight.
-Incomplete probability models are reported as exclusions. If all evaluated paid
-packs have negative expected profit in profit-only mode, no purchase is recommended.
+Other options: `--dataset PATH`, `--median-window 7d|30d`, `--fee FRACTION`,
+`--format text|json`. See `solve --help` and `scrap --help` for all options.
+Solving uses saved files and works offline.
 
-The baseline excludes golden, pity, and god-pack effects. Historical medians
-are estimates of resale value, not guaranteed sale prices. Contradictory source
-rates, as observed for the rotating daily pack, remain excluded.
+Paid mode subtracts cost; free mode considers free-token and zero-cost packs.
+Missing prices exclude boosters when profit has positive weight. Unverified odds
+are excluded. Golden, pity, and god-pack effects are not modeled. Historical
+medians do not guarantee sale prices. The tool never opens packs or trades.
+Exit codes: 0 success, 2 invalid input/collection failure, 3 no eligible booster.
 
-Exit codes: `0` success, `2` invalid input or collection failure, `3` no eligible
-booster (with an exclusion report). `--format json` provides structured results.
-
-## Develop and test
+## Development
 
 ```sh
 nix flake check
-
-# Build and test local edits in the development environment.
-nix develop
+# Optional manual build inside nix develop:
 cmake -S . -B build -G Ninja
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-Inside the shell, `scrap` and `solve` use the packaged project. Use
-`python -m kyara.collector` and `./build/solve` to exercise local edits.
-Tests use synthetic fixtures and mocked requests; they do not contact Kyara.
-
-For an offline demonstration, import the synthetic fixture into a separate directory:
-
-```sh
-nix run .#scrap -- --import-raw tests/fixtures/raw.json \
-  --verification tests/fixtures/verification.json \
-  --database data/demo/kyara.sqlite --output data/demo/latest.json
-nix run .#solve -- --dataset data/demo/latest.json
-```
-
-Replaying pinned software with the same dataset, ownership file, and arguments
-reproduces scores and tie-breaking. Informational snapshot age changes with time.
-The pinned OR-Tools package includes other backend libraries; Nix supplies them,
-while this application uses CP-SAT exclusively.
+`python/kyara/` collects and validates data; `src/` implements scoring and CP-SAT;
+`tests/` uses synthetic fixtures and mocked requests, without contacting Kyara.
+Run manual builds with `./build/solve`, or Python directly with
+`python -m kyara.collector`. See [the technical reference](docs/model.md) for
+formulas, probability assumptions, and data formats.

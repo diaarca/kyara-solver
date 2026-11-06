@@ -8,6 +8,7 @@
 #include <iostream>
 #include <limits>
 #include <map>
+#include <optional>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -16,6 +17,7 @@
 #include <nlohmann/json.hpp>
 #include "ortools/sat/cp_model.h"
 #include "ortools/sat/cp_model_solver.h"
+#include "rebirth.h"
 
 using json = nlohmann::json;
 namespace sat = operations_research::sat;
@@ -25,6 +27,7 @@ constexpr int64_t SCALE = 1000000;
 struct Options {
   std::string dataset = "data/latest.json", owned, window = "7d", format = "text";
   std::string command, action, card_id, mode = "paid";
+  std::string rebirth_state;
   std::vector<std::string> universes;
   double weight = 1, fee = 0;
 };
@@ -68,7 +71,8 @@ Usage: solve [options]
   --dataset PATH           Snapshot JSON (default data/latest.json)
   --universe NAME          Select a universe; repeat to select several
   --owned PATH             Owned card IDs JSON (omitted: empty collection)
-  --profit-weight NUMBER   0=completion, 1=profit, 0.5=equal normalized weight
+  --rebirth-state PATH     Optimize rarity-count progress using captured rebirth state
+  --profit-weight NUMBER   0=progress, 1=profit, 0.5=equal normalized weight
   --median-window 7d|30d   Default 7d; no missing-price substitution
   --fee NUMBER             Proportional sale fee in [0,1] (default 0)
   --purchase-mode paid|free  Chakra purchase or free-pack token (default paid)
@@ -77,12 +81,15 @@ Usage: solve [options]
 
 Free mode includes boosters accepting free packs and zero-cost boosters.
 It treats their opening cost as zero. Paid mode includes positive-cost boosters.
-Weight below 1 requires --universe. Ownership changes only completion value.
+Weight below 1 requires --universe or --rebirth-state.
+Rebirth mode defaults to weight 0 and reads holdings/targets from its state file.
+It cannot be combined with --universe or --owned. Only rarity criteria are scored.
 )";
 }
 
 Options parse(int argc, char** argv) {
   Options options;
+  bool explicit_weight = false;
   int index = 1;
   if (index < argc && std::string(argv[index]) == "universes") { options.command = argv[index++]; }
   else if (index < argc && std::string(argv[index]) == "owned") {
@@ -98,6 +105,7 @@ Options parse(int argc, char** argv) {
     std::string value = argv[index++];
     if (key == "--dataset") options.dataset = value;
     else if (key == "--owned") options.owned = value;
+    else if (key == "--rebirth-state") options.rebirth_state = value;
     else if (key == "--card-id") options.card_id = value;
     else if (key == "--universe") options.universes.push_back(value);
     else if (key == "--median-window") options.window = value;
@@ -108,14 +116,20 @@ Options parse(int argc, char** argv) {
       double number = std::stod(value, &consumed);
       if (consumed != value.size() || !std::isfinite(number) || number < 0 || number > 1)
         fail(key + " must be a finite number in [0,1]");
-      if (key == "--fee") options.fee = number; else options.weight = number;
+      if (key == "--fee") options.fee = number;
+      else { options.weight = number; explicit_weight = true; }
     } else fail("Unknown option " + key);
   }
   if (options.window != "7d" && options.window != "30d") fail("--median-window must be 7d or 30d");
   if (options.format != "text" && options.format != "json") fail("--format must be text or json");
   if (options.mode != "paid" && options.mode != "free") fail("--purchase-mode must be paid or free");
-  if (options.command.empty() && options.weight < 1 && options.universes.empty())
-    fail("Completion weight requires at least one --universe");
+  if (!options.rebirth_state.empty()) {
+    if (!options.command.empty() || !options.universes.empty() || !options.owned.empty())
+      fail("--rebirth-state cannot be combined with subcommands, --universe, or --owned");
+    if (!explicit_weight) options.weight = 0;
+  }
+  if (options.command.empty() && options.weight < 1 && options.universes.empty() && options.rebirth_state.empty())
+    fail("Progress weight requires --universe or --rebirth-state");
   return options;
 }
 
@@ -168,10 +182,13 @@ struct Candidate {
   size_t priced = 0, total = 0;
   bool profit_known = true;
   json opening_context = nullptr;
+  rebirth::Progress rebirth_progress;
 };
 
 json run(const Options& options, const json& data, const std::map<std::string, json>& cards) {
-  auto owned = owned_cards(options.owned, cards);
+  auto owned = owned_cards(options.rebirth_state.empty() ? options.owned : options.rebirth_state, cards);
+  std::optional<rebirth::State> rebirth_state;
+  if (!options.rebirth_state.empty()) rebirth_state = rebirth::load(read_json(options.rebirth_state), cards, owned);
   std::map<std::string, std::set<std::string>> universe_names;
   std::set<std::string> exact_universe_names;
   for (const auto& [key, card] : cards) {
@@ -234,6 +251,14 @@ json run(const Options& options, const json& data, const std::map<std::string, j
         c.proceeds += expected * finite_number(price, "median price") * (1 - options.fee);
       }
     }
+    if (rebirth_state && options.weight < 1 && reasons.empty()) {
+      try {
+        c.rebirth_progress = rebirth::evaluate(booster, cards, *rebirth_state);
+        c.progress = c.rebirth_progress.score;
+      } catch (const std::exception& error) {
+        reasons.push_back(std::string("rebirth progress: ") + error.what());
+      }
+    }
     c.profit = c.proceeds - c.cost;
     if (!std::isfinite(c.profit) || !std::isfinite(c.progress)) fail("Objective overflow");
     if (!reasons.empty()) excluded.push_back({{"id", c.id}, {"name", c.name}, {"reasons", reasons}});
@@ -246,10 +271,17 @@ json run(const Options& options, const json& data, const std::map<std::string, j
     {"snapshot_id", data.at("snapshot_id")}, {"collected_at", data.at("collected_at")},
     {"synthetic", data.value("synthetic", false)}, {"purchase_mode", options.mode},
     {"profit_weight", options.weight}, {"fee", options.fee}, {"median_window", options.window},
+    {"progress_objective", rebirth_state ? "rebirth" : "collection"},
     {"universes", selected}, {"owned_ids", owned}, {"missing_target_cards", targets.size()},
     {"score_scale", SCALE}, {"excluded", excluded}, {"warnings", json::array()},
     {"ranking", json::array()}, {"best", nullptr}, {"status", "NO_ELIGIBLE_BOOSTER"}
   };
+  if (rebirth_state) {
+    result["rebirth"] = {{"next_rebirth", rebirth_state->next_rebirth},
+      {"collected_at", rebirth_state->collected_at}, {"requirements", rebirth_state->summary},
+      {"unfinished_rarities", rebirth_state->unfinished}, {"rarity_targets_met", rebirth_state->unfinished == 0}};
+    result["warnings"].push_back("Rebirth scoring considers unique-card rarity counts only; other rebirth conditions are not evaluated");
+  }
   // Freshness metadata is informational and never alters scores on replay.
   if (data.contains("collected_at_unix")) {
     auto seconds = std::time(nullptr) - data.at("collected_at_unix").get<int64_t>();
@@ -258,7 +290,11 @@ json run(const Options& options, const json& data, const std::map<std::string, j
   }
   if (result["synthetic"].get<bool>()) result["warnings"].push_back("Synthetic fixture: not live Kyara data");
   if (options.fee == 0) result["warnings"].push_back("Selling fee is assumed to be zero");
-  if (options.weight < 1 && targets.empty()) result["warnings"].push_back("All selected cards are owned; completion contributes zero");
+  if (!rebirth_state && options.weight < 1 && targets.empty()) result["warnings"].push_back("All selected cards are owned; completion contributes zero");
+  if (rebirth_state && rebirth_state->unfinished == 0) {
+    result["warnings"].push_back("All rarity-count targets are already met; this does not establish rebirth eligibility");
+    if (options.weight == 0) { result["status"] = "REBIRTH_RARITY_TARGETS_MET"; return result; }
+  }
   if (candidates.empty()) return result;
   if (candidates.size() > 1000000) fail("Too many candidates for bounded integer scoring");
   double pmin = std::numeric_limits<double>::max(), pmax = -pmin, umin = pmin, umax = -pmin;
@@ -306,10 +342,15 @@ json run(const Options& options, const json& data, const std::map<std::string, j
       {"expected_proceeds", c.profit_known ? json(c.proceeds) : json(nullptr)},
       {"expected_profit", c.profit_known ? json(c.profit) : json(nullptr)},
       {"roi", c.profit_known && c.cost > 0 ? json(c.profit / c.cost) : json(nullptr)},
-      {"expected_distinct_new_cards", c.progress}, {"normalized_profit", c.normalized_profit},
-      {"normalized_completion", c.normalized_progress}, {"score", c.score},
+      {"expected_distinct_new_cards", rebirth_state ? json(nullptr) : json(c.progress)}, {"normalized_profit", c.normalized_profit},
+      {"normalized_completion", rebirth_state ? json(nullptr) : json(c.normalized_progress)}, {"score", c.score},
       {"price_coverage", {{"known", c.priced}, {"total", c.total}}}
     });
+    if (rebirth_state) {
+      result["ranking"].back()["rebirth_progress"] = options.weight < 1 ? json(c.rebirth_progress.score) : json(nullptr);
+      result["ranking"].back()["normalized_rebirth_progress"] = c.normalized_progress;
+      result["ranking"].back()["rebirth_by_rarity"] = options.weight < 1 ? c.rebirth_progress.by_rarity : json(nullptr);
+    }
   }
   result["best"] = result["ranking"][0];
   if (result["best"]["opening_context"].is_object())
@@ -345,18 +386,30 @@ int main(int argc, char** argv) {
     else {
       std::cout << "Snapshot " << result["snapshot_id"].get<std::string>() << " (" << result["collected_at"].get<std::string>() << ")\n";
       std::cout << "Mode: " << options.mode << "; profit weight: " << options.weight << "; fee: " << options.fee << '\n';
+      if (result.contains("rebirth")) {
+        std::cout << "Next rebirth: " << result["rebirth"]["next_rebirth"] << " (state "
+                  << result["rebirth"]["collected_at"].get<std::string>() << ")\n";
+        for (const auto& [rarity, requirement] : result["rebirth"]["requirements"].items())
+          std::cout << rarity << ": " << requirement["current"] << '/' << requirement["target"]
+                    << " (" << requirement["remaining"] << " missing)\n";
+      }
       if (result.contains("snapshot_age_seconds")) std::cout << "Snapshot age: " << result["snapshot_age_seconds"] << " seconds\n";
       for (const auto& warning : result["warnings"]) std::cout << "Note: " << warning.get<std::string>() << '\n';
-      if (result["best"].is_null()) std::cout << "No eligible booster.\n";
+      if (result["status"] == "REBIRTH_RARITY_TARGETS_MET") std::cout << "Rarity-count targets already met.\n";
+      else if (result["best"].is_null()) std::cout << "No eligible booster.\n";
       else std::cout << "Best booster: " << result["best"]["name"].get<std::string>() << '\n';
-      for (const auto& row : result["ranking"])
+      for (const auto& row : result["ranking"]) {
         std::cout << row["id"].get<std::string>() << " | " << row["name"].get<std::string>()
-                  << " | profit " << row["expected_profit"] << " | new cards " << row["expected_distinct_new_cards"]
-                  << " | score " << row["score"] << " | prices " << row["price_coverage"] << '\n';
+                  << " | profit " << row["expected_profit"];
+        if (row.contains("rebirth_progress"))
+          std::cout << " | rebirth progress " << row["rebirth_progress"];
+        else std::cout << " | new cards " << row["expected_distinct_new_cards"];
+        std::cout << " | score " << row["score"] << " | prices " << row["price_coverage"] << '\n';
+      }
       for (const auto& row : result["excluded"])
         std::cout << "Excluded " << row["id"].get<std::string>() << ": " << row["reasons"] << '\n';
     }
-    return result["best"].is_null() ? 3 : 0;
+    return result["best"].is_null() && result["status"] != "REBIRTH_RARITY_TARGETS_MET" ? 3 : 0;
   } catch (const std::exception& exc) {
     std::cerr << "solve: " << exc.what() << '\n';
     return 2;

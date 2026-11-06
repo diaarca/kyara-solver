@@ -1,98 +1,111 @@
-# Mathematical model
+# Model and data reference
 
-For a booster b and card c, let N_bc be the number of copies in one opening.
-The dataset stores both E[N_bc] and Pr(N_bc >= 1). Neither is assumed to equal
-the other. Published-rate baselines use uniform selection within each rarity;
-custom probability models can specify other distributions.
+## Objectives
 
-For historical median m_c, configured selling fee f, and opening cost C_b:
+For booster b and card c, N_bc is the number of copies obtained. The dataset
+stores both expected copies E[N_bc] and occurrence probability Pr(N_bc >= 1).
+With historical median m_c, sale fee f, and opening cost C_b:
 
-    P_b = sum_c E[N_bc] * m_c * (1-f) - C_b
+    profit P_b = sum_c E[N_bc] * m_c * (1-f) - C_b
+    completion U_b = sum_{c in missing selected cards} Pr(N_bc >= 1)
 
-For selected universes, let M contain only cards that are not marked owned:
+Completion counts distinct new cards, including duplicates at most once. It is
+an expectation, not the probability of completing a universe. Owned cards remain
+included in profit. Free mode sets opening cost to zero.
 
-    U_b = sum_{c in M} Pr(N_bc >= 1)
+For rebirth, D_r = max(target_r - current_r, 0), K_br is the number of distinct
+unowned cards of rarity r obtained, and A contains unfinished rarities:
 
-U_b is the expected number of distinct new cards in one opening. It is not the
-probability of getting any new card or of completing an entire universe.
-Linearity of expectation makes this valid even when occurrences of different
-cards are dependent. A repeated copy of one new card contributes at most one.
-Every missing card has equal value across selected universes.
+    rebirth R_b = sum_{r in A} E[min(K_br, D_r)] / D_r / |A|
 
-For each objective, use its minimum and maximum over the same eligible booster
-set to map values to [0,1]. A constant objective contributes zero. Pure objectives
-do not require the inactive objective's data; unknown profit is shown as null.
+Each unfinished rarity has equal weight. The cap is inside the expectation:
+with one Mythic missing, credit is the probability of any new Mythic. If no target
+remains, pure rebirth returns REBIRTH_RARITY_TARGETS_MET without a recommendation.
+This scores the next opening; it does not optimize time to rebirth or other criteria.
 
-    score_b = alpha * normalized(P_b) + (1-alpha) * normalized(U_b)
+When caps cannot bind, card occurrence probabilities suffice. Otherwise a dynamic
+program tracks capped distinct counts. With m missing cards and a draw hitting
+them with probability q, state k advances with probability q*(m-k)/m; the cap is
+absorbing. This requires uniform per-slot probabilities among missing cards for
+caps above one. Incompatible or insufficient models are excluded.
 
-For alpha=0.5, the objectives have equal influence over their observed ranges.
-Changing the eligible booster set can change that tradeoff. This weight does
-not mean a fixed chakra value per missing card, nor a 50% probability of progress.
+## Selection
 
-The C++ CP-SAT model creates a Boolean x_b for each eligible booster:
+Normalize each objective to [0,1] using its minimum and maximum over eligible
+boosters; constant objectives contribute zero. With alpha = --profit-weight:
 
+    score_b = alpha * normalized(P_b) + (1-alpha) * normalized(U_b or R_b)
     sum_b x_b = 1
-    maximize sum_b x_b * round(1,000,000 * score_b)
+    maximize sum_b x_b * round(1,000,000 * score_b), x_b Boolean
 
-One worker and a fixed seed make solving deterministic. Scores are rounded to
-six decimal places. An integer secondary coefficient selects the lexicographically
-smallest booster ID in a quantized tie; multiplying primary coefficients by n+1
-keeps this tie-break subordinate. Candidate count is bounded to protect integer
-arithmetic. The solver requires an OPTIMAL result and checks its winner against
-the reported ranking. Every candidate is scored, so a direct enumeration would
-also suffice for this first model; CP-SAT is used as requested and can support
-future budget/purchase constraints.
+CP-SAT uses one worker and a fixed seed. A subordinate integer tie-break chooses
+the smallest booster ID. Optimality and agreement with the reported ranking are
+checked. Direct enumeration would also suffice for the current single choice.
+Weights compare observed ranges, so changing eligible boosters can change tradeoffs.
+Inactive objectives do not require their data. Pure profit recommends no paid
+purchase when all evaluated paid boosters have negative expected profit.
 
-## Probability models accepted by the collector
+## Probability models
 
-An explicitly verified `independent_slots` model describes slot groups, each
-with k independent replacement draws from a complete card distribution p_sc:
+For independent replacement slot groups s with k_s draws and card probability p_sc:
 
     E[N_bc] = sum_s k_s * p_sc
     Pr(N_bc >= 1) = 1 - product_s (1-p_sc)^k_s
 
-A guaranteed slot is a distribution with probability 1 for its guaranteed card,
-or a verified distribution over a guaranteed rarity. Independence and replacement
-must be confirmed before using this format. Do not use it for duplicate prevention,
-conditional pity rules, or draws without replacement.
+The baseline assumes independent draws and uniform selection within each rarity.
+Validation checks complete pools, rarity counts, published slot and aggregate odds,
+and representative card details for each active rarity. Shared samples are fetched
+once. Sample validation is distinguished from exhaustive detail validation.
+Published percentages can replace base weights for special boosters, with rounding
+tolerances recorded. Contradictory recipes, including the observed daily-pack
+inconsistency, are excluded. Golden, pity, god-pack, and player-state effects are
+outside this baseline; liquidity, sale timing, and market impact are also omitted.
 
-Alternatively, a verified `moments` model supplies the two quantities directly.
-It supports dependent mechanics when the moments have been calculated or published
-correctly. Unknown mechanics leave the booster unranked.
+Custom verification maps booster IDs to `pack_sha256`, `mechanics_sha256`,
+`pool_complete`, `verified_at`, `evidence`, and `model`. Use
+`scrap --import-raw data/raw.json --fingerprints` to obtain fingerprints.
+An `independent_slots` model has `slots` with integer `draws` and complete card-ID
+`probabilities`. A `moments` model has `cards` mapping IDs to `expected_copies` and
+`occurrence_probability`; it can describe dependent mechanics but may lack the
+joint information required for capped rebirth scoring. Fingerprints bind models
+to captured mechanics; price changes preserve verification.
 
-Full collection additionally supports `published_rates_with_rarity_samples`:
-complete pools and all published slot/rarity/per-card aggregate rates are checked,
-plus at least one fresh character-detail probability per active rarity in each
-pool. This avoids fetching thousands of redundant character details. The model
-still explicitly assumes independent replacement draws and within-rarity
-uniformity; sample validation is recorded separately from exhaustive validation.
-When a booster overrides base weights, normalized published slot percentages can
-be used. Their four-decimal percentage rounding is recorded, with conservative
-error bounds applied to aggregate and sample comparisons. A contradictory
-published/detail recipe is excluded, as observed for the daily pack.
+## Collection and storage
 
-## Hand-checked synthetic fixture
+Undocumented Kyara GET endpoints under `/api`:
 
-`Profit pack` costs 20 and has two replacement draws, each selecting card 1
-(median 10) or card 4 (median 100) with probability 1/2. Expected copies of each
-are 1, giving expected proceeds 110 and profit 90. The occurrence probability
-of card 1 is 1-(1/2)^2 = 0.75.
+| Endpoint | Data |
+| --- | --- |
+| `/characters`, `/characters/{id}` | Catalogue and individual odds |
+| `/packs`, `/packs/{id}/characters` | Booster definitions and card pools |
+| `/rates`, `/config` | Probability rules |
+| `/me/collection/prices?ids=...` | Batch 7-/30-day medians and sales counts |
+| `/market/prices/{id}` | Individual price summary |
+| `/me/renaissance?fresh=1`, `/me/collection?lean=1` | Rebirth requirements and holdings |
 
-`Clover pack` costs 10 and draws twice from cards 1 and 2 with equal probability.
-Their medians are 10 and 6: proceeds 16, profit 6. If both are missing Black Clover
-cards, expected distinct new cards are 0.75+0.75 = 1.5.
+Requests are sequential, at least one second apart, with bounded retries and
+Retry-After handling. Access denials stop collection. Browser requests use an
+allowlist, refuse redirects, and retain credentials inside Vivaldi. Batch prices
+include unowned cards; absent medians stay null and scalar fair prices are rejected.
+Price refreshes bypass cached prices and retain metadata freshness information.
 
-Marking card 1 owned reduces that completion value to 0.75 while profit stays 6.
-The free-compatible pack guarantees card 2, so it becomes the completion winner
-among paid candidates when only card 2 is missing.
+Raw bundles contain `catalog`, `packs`, `pack_pools`, `rules`, `characters`,
+`prices`, `collected_at`, and optional per-route `fetched_at`. Card mapping keys
+are string IDs. Normalized schema version 1 records card identity/medians,
+booster eligibility/cost, outcome moments, verification, and capture metadata.
+Snapshot IDs hash canonical raw data plus verification. SQLite tables are
+`responses`, `snapshots`, `cards`, `boosters`, and `outcomes`. Imports are idempotent.
 
-These values are fictional fixture definitions, not statements about live Kyara.
+Rebirth sync makes only the two account GETs above, using `data/raw.json` for the
+catalogue. Its schema is version 1 with `counting: "unique"`, `collected_at`,
+`next_rebirth`, `owned`, and `requirements`: C/U/R/E/L/M each have `current` and
+`target`. Unique inventory counts must match reported counters; unknown cards or
+mismatches stop sync. Other account criteria are discarded. The solver checks
+counts again against its dataset. Targets vary with captured state, not hard-coded
+levels. Keep holdings local and refresh them when they change.
 
-## Interpretation limits
-
-Resale at historical medians is an estimate. The model does not represent sale
-timing, bid depth, market impact, or special variant premiums. Availability is
-evaluated at snapshot time and reported with snapshot age. Pack openings and
-ownership updates are manual: the program does not open packs, trade, place
-orders, or update ownership from actual openings. Re-run with updated ownership
-after obtaining new cards.
+For offline imports, use `scrap --import-raw PATH --verification PATH` or
+`scrap --import-har PATH`. HARs must include successful catalogue and booster
+response bodies. Import keeps allowlisted responses and discards request credentials;
+original HARs can still contain secrets and should remain local. Incomplete inputs
+receive no guessed odds or prices. Snapshot age is reported when solving.
