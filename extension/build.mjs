@@ -15,3 +15,4 @@ const license = await readFile('node_modules/highs/package.json', 'utf8');
 await writeFile('dist/vendor/NOTICE.txt', `HiGHS / highs-js: MIT license.\nhttps://github.com/lovasoa/highs-js\nhttps://github.com/ERGO-Code/HiGHS\n\nPackage metadata:\n${license}`);
 // Include the complete upstream license text with distributed binaries.
 await cp('THIRD_PARTY_LICENSES.txt', 'dist/THIRD_PARTY_LICENSES.txt');
+await cp('../LICENSE', 'dist/LICENSE');

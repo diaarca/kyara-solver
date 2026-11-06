@@ -2,10 +2,11 @@
   "name": "kyara-solver-extension",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "build": "tsc --noEmit && node build.mjs",
-    "test": "tsx --test test/*.test.ts",
+    "test": "tsx --test test/data.test.ts test/model.test.ts",
     "test:browser": "tsx test/browser.ts"
   },
   "dependencies": {

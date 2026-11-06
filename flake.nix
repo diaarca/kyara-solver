@@ -14,7 +14,7 @@
               (pkgs.lib.fileset.fileFilter (file: file.hasExt "cpp" || file.hasExt "h") ./src)
               (pkgs.lib.fileset.fileFilter (file: file.hasExt "py") ./python)
               (pkgs.lib.fileset.fileFilter (file: file.hasExt "py" || file.hasExt "json") ./tests)
-              ./CMakeLists.txt ./pyproject.toml ./README.md
+              ./CMakeLists.txt ./pyproject.toml ./README.md ./LICENSE
             ];
           };
           collector = pkgs.python3Packages.buildPythonApplication {
@@ -25,6 +25,7 @@
             build-system = [ pkgs.python3Packages.setuptools ];
             pythonImportsCheck = [ "kyara.collector" ];
             meta.mainProgram = "scrap";
+            meta.license = pkgs.lib.licenses.mit;
           };
           solver = pkgs.stdenv.mkDerivation {
             pname = "kyara-solver";
@@ -45,6 +46,7 @@
               runHook postCheck
             '';
             meta.mainProgram = "solve";
+            meta.license = pkgs.lib.licenses.mit;
           };
           extension = pkgs.buildNpmPackage {
             pname = "kyara-extension";
@@ -56,17 +58,18 @@
                 ./extension/package.json ./extension/package-lock.json
                 ./extension/tsconfig.json ./extension/build.mjs
                 ./extension/manifest.json ./extension/index.html ./extension/style.css
-                ./extension/THIRD_PARTY_LICENSES.txt
+                ./extension/THIRD_PARTY_LICENSES.txt ./LICENSE
                 (pkgs.lib.fileset.fileFilter (file: file.hasExt "py") ./python)
                 ./tests/fixtures
               ];
             };
             sourceRoot = "source/extension";
-            npmDepsHash = "sha256-gSJkT/XOXYqszJD8osLg9obOk9Cj3L4iMzd5oag+2WQ=";
+            npmDepsHash = "sha256-k51sBpytRE2COp/XRvxo6vW++tRWfOcOa5QsvY5RKLI=";
             nativeBuildInputs = [ pkgs.zip ];
             nativeCheckInputs = [ pkgs.python3 solver ];
             env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
             doCheck = true;
+            meta.license = pkgs.lib.licenses.mit;
             checkPhase = ''
               runHook preCheck
               KYARA_SOLVER=${solver}/bin/solve npm test

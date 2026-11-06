@@ -10,6 +10,7 @@ target_link_libraries(solve PRIVATE ortools::ortools nlohmann_json::nlohmann_jso
 target_compile_definitions(solve PRIVATE KYARA_ORTOOLS_VERSION="${ORTOOLS_VERSION}")
 target_compile_options(solve PRIVATE -Wall -Wextra -Wpedantic)
 install(TARGETS solve RUNTIME DESTINATION bin)
+install(FILES LICENSE DESTINATION share/licenses/kyara-solver)
 include(CTest)
 if(BUILD_TESTING)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)

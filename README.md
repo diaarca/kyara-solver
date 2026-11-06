@@ -33,6 +33,9 @@ npm test
 
 An archive recipient can unzip it and load the folder without build tools.
 This version is unpacked; it has not been published to the Chrome Web Store.
+Successful [CI runs](https://github.com/diaarca/kyara-solver/actions/workflows/ci.yml)
+provide a `kyara-solver-extension` artifact for 14 days. Extract the artifact,
+then extract its `kyara-solver.zip` and load the folder containing `manifest.json`.
 
 ## Command-line setup
 
@@ -126,3 +129,18 @@ end-to-end extension test, run `npx playwright install chromium` and
 Run manual builds with `./build/solve`, or Python directly with
 `python -m kyara.collector`. See [the technical reference](docs/model.md) for
 formulas, probability assumptions, and data formats.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development and pull requests, the
+[Code of Conduct](CODE_OF_CONDUCT.md) for community guidelines, and
+[SECURITY.md](SECURITY.md) for private vulnerability reports. CI checks the
+extension on Linux, macOS, and Windows, plus the Nix builds and solver parity on
+Linux. Tests use mocked Kyara responses and require no account credentials.
+
+## License
+
+Project code is licensed under [MIT](LICENSE). Dependencies retain their own
+licenses; the extension includes its [third-party notices](extension/THIRD_PARTY_LICENSES.txt).
+Kyara and third-party card artwork, names, and other game content remain the
+property of their respective owners. This is an independent community project.
