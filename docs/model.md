@@ -2,7 +2,8 @@
 
 For a booster b and card c, let N_bc be the number of copies in one opening.
 The dataset stores both E[N_bc] and Pr(N_bc >= 1). Neither is assumed to equal
-the other. The collector does not assume that cards within a rarity are uniform.
+the other. Published-rate baselines use uniform selection within each rarity;
+custom probability models can specify other distributions.
 
 For historical median m_c, configured selling fee f, and opening cost C_b:
 
@@ -91,6 +92,7 @@ These values are fictional fixture definitions, not statements about live Kyara.
 
 Resale at historical medians is an estimate. The model does not represent sale
 timing, bid depth, market impact, or special variant premiums. Availability is
-evaluated at snapshot time and reported with snapshot age. Collection is manual:
-the program does not open packs, trade, place orders, or update ownership from
-actual openings. Re-run with updated ownership after obtaining new cards.
+evaluated at snapshot time and reported with snapshot age. Pack openings and
+ownership updates are manual: the program does not open packs, trade, place
+orders, or update ownership from actual openings. Re-run with updated ownership
+after obtaining new cards.

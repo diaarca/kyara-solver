@@ -1,170 +1,134 @@
-# Collection, validation, and data formats
+# Collection and data reference
 
-## Current live access status
+## Supported workflows
 
-On 2026-11-06, the authorized Vivaldi bridge successfully collected all 6,736
-cards' explicit medians through the 200-card batch endpoint, plus all 17 pools.
-See [current data](current-data.md). Plain `scrap` now uses that fast price-only
-workflow; `--full-refresh` rebuilds metadata and published-rate validation.
-The initial direct-access failure below is retained as historical context.
+`scrap` defaults to a price-only refresh of `data/raw.json`, loading
+`data/verification.json`. Without a raw snapshot it performs a full collection.
+A full refresh downloads the catalogue, booster definitions and pools, public
+probability rules, batch prices, and representative character details for each
+rarity in each pool. It rebuilds validation and records conflicting boosters as
+exclusions. Price refreshes reuse that metadata; refresh it after rules or pools change.
 
-On 2026-11-05, a read-only request to `https://kyara.games/api/packs` returned:
+The macOS browser bridge runs read-only requests in an already authorized Kyara
+tab. It permits only specific catalogue, pool, probability, and price endpoints,
+refuses redirects, and keeps credentials in the browser. HTTP transport optionally
+reads `KYARA_TOKEN` and `KYARA_DEVICE_ID` from the environment. Neither transport
+exports authentication headers or sends credentials outside Kyara.
 
-```text
-HTTP/2 403
-content-type: application/json
-{"error":"verification_required"}
-```
+These are undocumented website endpoints and can change:
 
-Direct access remains blocked. A subsequent browser HAR established the actual
-catalogue and response shapes; see [capture findings](capture-validation.md) for
-coverage, the initial probability check, and subsequent complete Automne 2026
-baseline validation. Special opening mechanics and global booster comparison
-remain pending. Before scheduled collection, inspect
-the site's current terms, robots guidance, and any API instructions or contact
-the operator for a supported feed. The collector pauses on 401/403 or non-JSON
-responses instead of attempting to defeat verification.
+| Endpoint under `/api` | Purpose |
+| --- | --- |
+| `/characters` | Complete card catalogue |
+| `/packs` | Booster definitions, prices, slots, and published rates |
+| `/packs/{id}/characters` | Complete candidate pool |
+| `/rates`, `/config` | Public rarity and probability rules |
+| `/characters/{id}` | Individual card odds and optional price summary |
+| `/me/collection/prices?ids=...` | Batch 7-/30-day medians and sales counts |
+| `/market/prices/{id}` | Individual price summary |
 
-The candidate routes were discovered in community client source code:
+The batch-price endpoint was validated with 200 IDs per request and returned
+all 6,736 catalogue cards, including unowned cards. Spot checks matched individual
+market-price responses. Scalar fair-price values are rejected rather than treated
+as medians. Missing windows remain null, without falling back to another window.
 
-- [Catalogue client](https://github.com/A-Finch13/Kyara-Games-Extension/blob/main/src/lib/kyara.js)
-- [Prices and booster probabilities](https://github.com/A-Finch13/Kyara-Games-Extension/blob/main/src/content/content.js)
+Requests are sequential and spaced at least one second apart. Transient HTTP
+failures use bounded retries and respect Retry-After. Authentication/access
+denials and unexpected schemas stop collection. Successful requests are
+checkpointed in SQLite; price-only refreshes bypass cached prices to collect new
+observations. If a batch omits an ID, its old value is not relabeled as fresh.
+Inspect coverage and exclusions before using a ranking.
 
-These are undocumented website endpoints, not an established official API contract.
-The adapter expects array responses from `/api/characters` and `/api/packs`,
-character details from `/api/characters/{id}`, and price objects from
-`/api/market/prices/{id}` containing `median7d`/`median30d`. Changed response shapes
-produce a validation failure or incomplete booster rather than guessed values.
+## Files and replay
 
-## Validate one booster using the browser
+| Default path | Content |
+| --- | --- |
+| `data/kyara.sqlite` | Response checkpoints, raw/normalized snapshots, and verification |
+| `data/raw.json` | Latest raw response bundle for subsequent refreshes |
+| `data/verification.json` | Probability models and supporting evidence |
+| `data/latest.json` | Normalized solver input |
+| `data/snapshots/{snapshot_id}.json` | Archived normalized solver input |
+| `owned.json` | Optional user-managed ownership file |
 
-1. Open Kyara normally and inspect Developer Tools → Network → Fetch/XHR.
-2. Visit the catalogue, booster list, one purchasable booster, and its card price
-   pages. Record the complete pool, price, slots, guarantees, availability,
-   and the definition of each displayed probability.
-3. Export the Network log as a HAR **with response content**. Prefer the browser's
-   sanitized export. Keep this file local: HAR files can contain account secrets.
-4. Import it with `scrap --import-har kyara.har --raw-output data/raw.json`.
-   Only catalogue, booster, character-detail, and price response bodies are retained.
-   Headers/cookies and unrelated routes are ignored. Missing card-price responses
-   remain missing; browsing a few cards does not establish full price coverage.
-5. Obtain exact expected copies and occurrence probabilities, or verify independent
-   replacement-slot mechanics and their full distributions. Create the verification
-   JSON below. If the site publishes only ambiguous odds, keep the booster unverified.
-6. Reimport with `--verification data/verification.json`. Check the result against
-   several visible card prices and independently calculate one booster's objectives.
-7. Extend verification and price coverage to all desired boosters before relying
-   on a global ranking. Each discovered unverified booster remains in the exclusion
-   report. Do not assume that the best verified booster is best across unknown packs.
+The SQLite tables are `responses`, `snapshots`, `cards`, `boosters`, and
+`outcomes`. Normalized records are keyed by snapshot ID. JSON schema version is 1.
+A snapshot ID hashes canonical raw data plus verification. Identical imports are
+idempotent. A failed collection does not replace the latest completed JSON export;
+a successful partial import explicitly records incomplete coverage.
 
-If supported authenticated access is available, the collector optionally reads
-`KYARA_TOKEN` and `KYARA_DEVICE_ID` from the environment. It never stores these
-request headers, prints their values, or sends them outside Kyara. Authentication
-does not promise to resolve browser verification. Do not commit tokens or HAR files.
+Save the exact dataset, ownership file, solver output, and flake lock used for a
+result. Unknown dataset schema versions are rejected. Snapshot availability is
+computed at capture time, and the solver reports snapshot age.
 
 ## Raw response bundle
 
-HAR import produces this same format; it can also be assembled from copied
-response bodies. Keys in card mappings are stable card IDs as strings.
-
 ```json
 {
-  "collected_at": "2026-11-05T12:00:00Z",
+  "collected_at": "2026-11-06T12:00:00Z",
   "catalog": [{"id": 123, "name": "Example", "series": "Example universe", "rarity": "R"}],
-  "packs": [{"id": "pack-id", "name": "Example pack", "chakraPrice": 10}],
-  "characters": {"123": {"dropChance": {"pack-id": 1}}},
+  "packs": [{"id": "example", "name": "Example pack", "chakraPrice": 10}],
+  "pack_pools": {"example": [123]},
+  "rules": {},
+  "characters": {"123": {"id": 123, "dropChance": {"example": 1}}},
   "prices": {"123": {"median7d": 12, "median30d": 11}},
-  "fetched_at": {"/market/prices/123": "2026-11-05T12:00:00Z"}
+  "fetched_at": {"/market/prices/123": "2026-11-06T12:00:00Z"}
 }
 ```
 
-`fetched_at` is optional for hand-assembled bundles, which use `collected_at` as
-the fallback timestamp. `synthetic: true` marks fictional test data throughout
-the workflow. Sales/count fields from price objects are retained with their
-original names; a 30-day count is never relabeled as the 7-day median's sample size.
-Neither variant pricing nor undocumented pagination formats are inferred.
+Card mapping keys are string IDs. `fetched_at` is optional for hand-assembled
+bundles, which fall back to `collected_at`. `synthetic: true` identifies fictional
+test input. Price-only refreshes add source timestamps, batch duration, response
+coverage, and metadata age information. Reported sales counts keep their original
+window; a 30-day count is never presented as a 7-day sample size.
 
-## Verification file
+The normalized solver input contains card identity, universe, rarity and nullable
+medians; booster cost, availability, free-token eligibility and issues; per-card
+expected copies and occurrence probabilities; verification evidence and capture
+metadata. See [the model](model.md) for how those moments are used.
 
-First print fingerprints of the imported evidence:
+## Probability verification
+
+Full refresh checks complete pools, rarity counts, published slot rates,
+per-booster rarity expectations/occurrences, per-card aggregate rates, and at
+least one character detail for every active rarity in each pool. Shared samples
+are fetched once. Validation records its coverage and precision; it does not
+claim exhaustive individual-detail validation when samples were used.
+
+The normal-opening recipe assumes independent replacement draws and uniform
+selection within each rarity, consistent with the published rates. Base weights
+provide high precision where applicable. Boosters overriding those weights use
+normalized published slot percentages with explicit rounding tolerances. Golden,
+pity, god-pack, and player-state effects are excluded from this baseline.
+Contradictory recipes are not silently reconciled: the daily pack's published
+pool/slot rates have disagreed with its individual `dropChance.daily` values.
+
+For a custom or independently reviewed model, use `--verification` with a file
+mapping booster IDs to `pack_sha256`, `mechanics_sha256`, `pool_complete`,
+`verified_at`, `evidence`, and `model`. Obtain the fingerprints with:
 
 ```sh
-nix run path:.#scrap -- --import-raw data/raw.json --fingerprints
+scrap --import-raw data/raw.json --fingerprints
 ```
 
-Copy the corresponding hashes into a manually reviewed model:
+An `independent_slots` model contains `slots`, each with integer `draws` and a
+complete `probabilities` mapping from card ID to per-draw probability. A `moments`
+model contains `cards`, mapping each card ID to `expected_copies` and
+`occurrence_probability`. Every eligible card must be represented. Fingerprints
+bind the model to its captured pool/rules/odds evidence; price-only changes preserve
+verification. A manual `pool_complete` assertion is not automatic proof of completeness.
 
-```json
-{
-  "boosters": {
-    "pack-id": {
-      "pack_sha256": "COPY_PRINTED_HASH",
-      "mechanics_sha256": "COPY_PRINTED_HASH",
-      "pool_complete": true,
-      "verified_at": "2026-11-05T12:00:00Z",
-      "evidence": "Describe the published rules/source and independent check here",
-      "model": {
-        "type": "independent_slots",
-        "slots": [{"draws": 1, "probabilities": {"123": 1}}]
-      }
-    }
-  }
-}
+## Offline imports
+
+Raw JSON and browser HAR imports remain available for replay and debugging:
+
+```sh
+scrap --import-raw /path/to/raw.json --verification /path/to/verification.json
+scrap --import-har /path/to/capture.har --raw-output data/imported-raw.json
 ```
 
-For mechanics represented by verified moments, replace `model` with:
-
-```json
-{
-  "type": "moments",
-  "cards": {
-    "123": {"expected_copies": 1, "occurrence_probability": 1}
-  }
-}
-```
-
-Every eligible card must be represented. `pool_complete` is a review assertion,
-not proof generated by the tool. The collector checks finite nonnegative values,
-probability bounds, consistent moments, slot sums, and card references. It binds
-verification to the exact pack definition, catalogue identities/rarities/universes,
-and captured published drop chances. Price-only changes preserve verification;
-changed mechanics evidence makes the booster incomplete until reviewed again.
-Different detail coverage also changes the fingerprint. For a single-booster run,
-create verification using the same captured detail set as the intended run;
-full-catalogue collection should be verified against full detail coverage.
-
-This manual verification gate is deliberate until a live response contract and
-odds semantics can be established. Do not fill unknown probabilities uniformly
-or copy fixture mechanics into a live verification file.
-
-## Persistence and replay
-
-SQLite stores checkpointed response bodies, immutable snapshot bundles and
-verification evidence, and normalized `cards`, `boosters`, and `outcomes` tables
-keyed by snapshot ID. JSON exports use schema version 1. Snapshot IDs are SHA-256
-hashes of canonical raw data plus verification, so identical imports have identical
-IDs. Existing snapshots are idempotent; failed collection does not replace the
-latest JSON export. Successful partial imports publish explicit incomplete data.
-
-The normalized C++ interface contains:
-
-- Snapshot identity, collection timestamp/epoch, response timestamps, and synthetic marker.
-- Cards with ID, name, universe, rarity, nullable median fields, and price metadata.
-- Boosters with cost, snapshot availability, free-pack compatibility, issues,
-  verified evidence, and per-card expected copies/occurrence probabilities.
-
-Save JSON solver output alongside the exact snapshot and ownership file to
-reproduce a decision. Keep those files when upgrading the software; unknown
-schema versions are rejected. Database schema migrations are not needed for v1.
-
-Live collection is sequential with at least one second between requests. It
-honors Retry-After, retries transient failures at most three total attempts,
-and checkpoints each successful response. HTTP 404 details/prices remain absent;
-unexpected errors stop the run. A catalogue with N cards can require roughly
-2N+2 requests on the first full run, so review the access policy and prefer
-bulk feeds if the operator provides them.
-
-Scheduling is intentionally manual until live validation and access rules are
-settled. Afterwards, invoke the documented `scrap` command from your scheduler
-with an absolute checkout path and explicit database/output/verification paths.
-Retain snapshots and inspect coverage and failures before acting on a ranking.
+HAR input must contain successful catalogue and booster responses with response
+bodies. The importer retains allowlisted catalogue, pool, rule, card and price
+responses, drops request headers/cookies and unrelated account routes, and
+restricts configuration fields to those used by the model. Keep HAR files local:
+the original file may contain credentials even when the imported bundle does not.
+Incomplete imports are never assigned guessed probabilities or prices.

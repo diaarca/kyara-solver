@@ -1,19 +1,16 @@
-import copy
 import io
 import json
 import math
 import os
 from pathlib import Path
 import random
-import sqlite3
 import subprocess
 import tempfile
 import unittest
-from unittest.mock import patch
 import urllib.error
 
 from kyara.collector import (
-    Client, DataError, database, digest, import_har, main, mechanics_digest,
+    Client, DataError, database, import_har, main,
     moments, normalize, save,
 )
 from kyara.baseline import verify_baseline
