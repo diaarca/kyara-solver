@@ -5,8 +5,7 @@ Use the browser extension (TypeScript / HiGHS), or the Python/C++ command line.
 
 ## Browser extension
 
-The extension runs locally on desktop Chrome and compatible Chromium browsers,
-including Vivaldi, on Windows, Linux, and macOS. Users need no terminal or server.
+The extension runs locally on desktop Chrome and compatible Chromium browsers, on Windows, Linux, and macOS. Users need no terminal or server.
 
 1. Open the browser's Extensions page and enable **Developer mode**.
 2. Choose **Load unpacked** and select the built extension folder (see below).
