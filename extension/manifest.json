@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Kyara Solver",
+  "version": "0.1.0",
+  "description": "Rank Kyara boosters by profit, collection completion, and rebirth progress. Everything stays local.",
+  "minimum_chrome_version": "120",
+  "permissions": ["storage", "unlimitedStorage", "scripting"],
+  "host_permissions": ["https://kyara.games/*"],
+  "action": {"default_title": "Open Kyara Solver"},
+  "background": {"service_worker": "background.js"},
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; connect-src 'self';"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "kyara-solver-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit && node build.mjs",
+    "test": "tsx --test test/*.test.ts",
+    "test:browser": "tsx test/browser.ts"
+  },
+  "dependencies": {
+    "highs": "1.15.4"
+  },
+  "devDependencies": {
+    "@types/chrome": "0.3.7",
+    "@types/node": "22.20.5",
+    "esbuild": "0.28.2",
+    "playwright": "1.65.0",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2"
+  }
+}

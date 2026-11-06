@@ -1,9 +1,40 @@
 # Kyara Solver
 
-Python collects card prices and booster odds; C++20 / OR-Tools CP-SAT ranks
-boosters by profit, universe completion, or rebirth progress.
+Rank Kyara boosters by profit, universe completion, or rebirth progress.
+Use the browser extension (TypeScript / HiGHS), or the Python/C++ command line.
 
-## Setup
+## Browser extension
+
+The extension runs locally on desktop Chrome and compatible Chromium browsers,
+including Vivaldi, on Windows, Linux, and macOS. Users need no terminal or server.
+
+1. Open the browser's Extensions page and enable **Developer mode**.
+2. Choose **Load unpacked** and select the built extension folder (see below).
+3. Click the extension icon. Keep Kyara open and logged in, then choose **Update
+   prices** and optionally **Sync holdings & rebirth**.
+4. Choose free/paid boosters, a goal, universes, and a profit weight; click
+   **Find best booster**.
+
+Collection runs in the Kyara tab without AppleScript. Prices, holdings, parameters,
+and results stay on the device. Solving works offline with cached data. The page
+supports importing CLI `data/latest.json`, backups, and exporting results and the
+HiGHS MILP model (`.lp`). Keep backups private: they can include owned card IDs.
+
+Build/package for distribution (contributors only):
+
+```sh
+nix build .#extension  # Load result/; distributable archive: result/kyara-solver.zip
+# Or, with Node.js and Python 3 available:
+cd extension
+npm ci
+npm run build         # Load extension/dist/ from the repository root
+npm test
+```
+
+An archive recipient can unzip it and load the folder without build tools.
+This version is unpacked; it has not been published to the Chrome Web Store.
+
+## Command-line setup
 
 ```sh
 nix develop
@@ -88,6 +119,10 @@ ctest --test-dir build --output-on-failure
 
 `python/kyara/` collects and validates data; `src/` implements scoring and CP-SAT;
 `tests/` uses synthetic fixtures and mocked requests, without contacting Kyara.
+`extension/src/` contains the form, browser collector, validation, and HiGHS worker.
+`extension/test/` checks the browser implementation against CLI fixtures. For the
+end-to-end extension test, run `npx playwright install chromium` and
+`npm run test:browser` inside `extension/`. Its Kyara requests are mocked.
 Run manual builds with `./build/solve`, or Python directly with
 `python -m kyara.collector`. See [the technical reference](docs/model.md) for
 formulas, probability assumptions, and data formats.

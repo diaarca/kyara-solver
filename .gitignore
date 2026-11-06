@@ -9,3 +9,6 @@ __pycache__/
 dist/
 .venv/
 *.har
+node_modules/
+extension/kyara-solver.zip
+.DS_Store

@@ -38,9 +38,12 @@ boosters; constant objectives contribute zero. With alpha = --profit-weight:
     sum_b x_b = 1
     maximize sum_b x_b * round(1,000,000 * score_b), x_b Boolean
 
-CP-SAT uses one worker and a fixed seed. A subordinate integer tie-break chooses
-the smallest booster ID. Optimality and agreement with the reported ranking are
-checked. Direct enumeration would also suffice for the current single choice.
+The CLI uses CP-SAT; the extension uses HiGHS compiled to WebAssembly, running in
+a dedicated worker. Both solve the same binary choice model. Integer coefficients
+are `round(1,000,000 * score_b) * (n+1) + n-i`, where n is the candidate count and
+i is its index in ascending booster-ID order. This makes the ID tie-break strictly
+subordinate to the primary score. Both require an optimal result and check agreement
+with the ranking. Direct enumeration would also suffice for the current single choice.
 Weights compare observed ranges, so changing eligible boosters can change tradeoffs.
 Inactive objectives do not require their data. Pure profit recommends no paid
 purchase when all evaluated paid boosters have negative expected profit.
@@ -93,7 +96,9 @@ Raw bundles contain `catalog`, `packs`, `pack_pools`, `rules`, `characters`,
 `prices`, `collected_at`, and optional per-route `fetched_at`. Card mapping keys
 are string IDs. Normalized schema version 1 records card identity/medians,
 booster eligibility/cost, outcome moments, verification, and capture metadata.
-Snapshot IDs hash canonical raw data plus verification. SQLite tables are
+CLI snapshot IDs hash canonical raw data plus verification; extension snapshots
+hash their raw JSON bundle. IDs identify captures within each implementation;
+cross-implementation IDs need not match. SQLite tables in the CLI are
 `responses`, `snapshots`, `cards`, `boosters`, and `outcomes`. Imports are idempotent.
 
 Rebirth sync makes only the two account GETs above, using `data/raw.json` for the
@@ -109,3 +114,15 @@ For offline imports, use `scrap --import-raw PATH --verification PATH` or
 response bodies. Import keeps allowlisted responses and discards request credentials;
 original HARs can still contain secrets and should remain local. Incomplete inputs
 receive no guessed odds or prices. Snapshot age is reported when solving.
+
+The extension uses Manifest V3 with packaged HiGHS JavaScript/WASM (MIT licensed),
+no remote executable code, and permissions limited to Kyara, script injection,
+and local storage. `unlimitedStorage` accommodates the complete catalogue and
+probability models. Collection runs sequentially from its full-page UI, which must
+stay open. Cancellation takes effect after an in-flight request. Complete datasets
+replace local storage only on success; metadata/price checkpoints allow a failed
+first collection to retry using collected metadata. Account sync uses exactly the
+two account GETs above and stores only normalized holdings and rarity criteria.
+Imported datasets are validated but require a full metadata refresh before further
+collection. Validation establishes consistency with published odds, not a guarantee
+about undocumented server mechanics.

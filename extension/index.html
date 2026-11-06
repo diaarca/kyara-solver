@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kyara Solver</title><link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <header><div><h1>Kyara Solver</h1><p>Choose your next booster. Calculations and data stay on this device.</p></div><span class="badge">HiGHS · local</span></header>
+  <section aria-labelledby="data-title">
+    <h2 id="data-title">1. Update your data</h2>
+    <p id="snapshot">No dataset yet. Open Kyara, log in, then update data.</p>
+    <div class="actions">
+      <button id="refresh" type="button">Update prices</button>
+      <button id="full" type="button" class="secondary">Refresh catalogue &amp; prices</button>
+      <button id="account" type="button" class="secondary">Sync holdings &amp; rebirth</button>
+      <button id="cancel" type="button" class="secondary" hidden>Cancel</button>
+    </div>
+    <p id="account-status">Holdings have not been synced.</p>
+    <p class="muted">Keep this page and your logged-in Kyara tab open while updating. Refresh the catalogue when pools or odds change.</p>
+    <details><summary>Import or export data</summary><div class="actions">
+      <label class="file">Import dataset or backup <input id="import" type="file" accept=".json,application/json"></label>
+      <button id="export" type="button" class="secondary">Export backup</button>
+    </div></details>
+  </section>
+  <section aria-labelledby="parameters-title">
+    <h2 id="parameters-title">2. Choose your goal</h2>
+    <form id="parameters">
+      <div class="grid">
+        <label>Booster type<select id="mode"><option value="free">Free boosters</option><option value="paid">Paid boosters</option></select></label>
+        <label>Goal<select id="goal"><option value="profit">Profit</option><option value="collection">Universe completion</option><option value="rebirth">Rebirth progress</option></select></label>
+        <label>Median price window<select id="window"><option value="7d">7 days</option><option value="30d">30 days</option></select></label>
+        <label>Selling fee (%)<input id="fee" type="number" min="0" max="100" step="0.1" value="0" required></label>
+      </div>
+      <div id="progress-fields" hidden>
+        <label>Profit weight: <output id="weight-label">0%</output><input id="weight" type="range" min="0" max="100" step="1" value="0"></label>
+        <p class="muted">0% focuses on progress; 50% gives profit and progress equal normalized influence.</p>
+      </div>
+      <div id="collection-fields" hidden>
+        <label>Universes (select one or more)<input id="universe-search" type="search" placeholder="Filter universes" aria-label="Filter universes"></label>
+        <div id="universes" class="universes" role="group" aria-label="Universes"></div>
+        <label class="inline"><input id="use-holdings" type="checkbox" checked> Use synced holdings</label>
+        <label id="manual-owned" hidden>Owned card IDs (comma or whitespace separated)<textarea id="owned" rows="3" placeholder="123, 456"></textarea></label>
+      </div>
+      <p id="rebirth-help" hidden>Sync holdings &amp; rebirth first. Each unfinished rarity has equal weight; owned cards and duplicates earn no progress. Only card-count requirements are considered.</p>
+      <button id="solve" type="submit">Find best booster</button>
+    </form>
+  </section>
+  <p id="status" role="status" aria-live="polite"></p>
+  <section id="results" hidden aria-labelledby="result-title">
+    <h2 id="result-title">Recommendation</h2><p id="best"></p>
+    <div class="table-wrap"><table><thead><tr><th>Booster</th><th>Expected profit</th><th>Progress</th><th>Score</th><th>Prices known</th></tr></thead><tbody id="ranking"></tbody></table></div>
+    <ul id="warnings"></ul>
+    <details><summary>Excluded boosters</summary><ul id="exclusions"></ul></details>
+    <div class="actions"><button id="export-result" type="button" class="secondary">Export result</button><button id="export-model" type="button" class="secondary">Export mathematical model (.lp)</button></div>
+  </section>
+  <footer>Read-only analysis. Normal openings only; golden, pity and god-pack effects are excluded. Historical prices do not guarantee sales.</footer>
+</main>
+<script type="module" src="app.js"></script>
+</body>
+</html>
