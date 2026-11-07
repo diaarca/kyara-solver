@@ -1,6 +1,6 @@
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -38,6 +38,8 @@ try {
   assert.match(await page.locator('#best').innerText(), /Free-compatible pack/);
 
   // Exercise real script injection and authenticated GETs against mocked Kyara.
+  const wishlistFixture = JSON.parse(await readFile(new URL('../../tests/fixtures/wishlist.json', import.meta.url), 'utf8'));
+  let wishlistFail = false, wishlistGate: Promise<void> | undefined;
   const raw = baselineFixture(); const calls: string[] = []; let pricesFail = false;
   let priceGate: Promise<void> | undefined;
   await context.route('https://kyara.games/**', async route => {
@@ -60,6 +62,15 @@ try {
       if (pricesFail) { await route.fulfill({ status: 403, contentType: 'application/json', body: '{}' }); return; }
       // A cancelled response must never replace the saved prices.
       body = gate ? { '1': { median7d: 999, median30d: 999 }, '2': { median7d: 888, median30d: 888 } } : raw.prices;
+    } else if (path === '/me/wishlist') body = [1, 2];
+    else if (path.startsWith('/market/prices/')) {
+      const gate = wishlistGate; if (gate) await gate;
+      if (wishlistFail) { await route.fulfill({ status: 403, contentType: 'application/json', body: '{}' }); return; }
+      const id = path.split('/').at(-1)!;
+      const sample = wishlistFixture.cards.find((c: any) => c.id === id);
+      const shift = Math.floor(Date.now()/86400000)*86400000 - Date.parse('2026-11-07T00:00:00Z');
+      body = { characterId: Number(id), secret: 'must not persist', days: sample.days.map((r: any) => ({...r,
+        day: new Date(Date.parse(r.day+'T00:00:00Z')+shift).toISOString().slice(0,10), median: gate ? r.median*100+1 : r.median })) };
     } else if (path === '/me/renaissance') body = { next: 2, requirements: RARITIES.map(r => ({ key: r === 'L' ? 'legendaries' : r === 'M' ? 'mythics' : r,
       have: 0, need: r === 'C' || r === 'R' ? 1 : 0 })) };
     else if (path === '/me/collection') body = [];
@@ -118,6 +129,41 @@ try {
   assert.match(await page.locator('#account-status').innerText(), /next rebirth 2/);
   await page.locator('#solve').click();
   await page.waitForFunction(() => document.querySelector('#status')?.textContent?.includes('Optimal solution'));
+  await page.locator('#show-wishlist').click(); await page.locator('#wishlist-sync').click();
+  await page.waitForFunction(() => document.querySelector('#status')?.textContent === 'Wishlist price history synced.');
+  await page.locator('#wishlist-solve').click();
+  await page.waitForFunction(() => document.querySelector('#status')?.textContent?.includes('Optimal wishlist'));
+  assert.match(await page.locator('#wishlist-best').innerText(), /Rare/);
+  await page.locator('#wishlist-metric').selectOption('absolute'); await page.locator('#wishlist-solve').click();
+  await page.waitForFunction(() => document.querySelector('#status')?.textContent?.includes('Optimal wishlist'));
+  assert.match(await page.locator('#wishlist-best').innerText(), /Common/);
+  await page.reload(); await page.waitForFunction(() => (document.querySelector('#wishlist-metric') as HTMLSelectElement)?.value === 'absolute');
+  await page.locator('summary').filter({ hasText: 'Import or export data' }).click();
+  const download = page.waitForEvent('download'); await page.locator('#export').click();
+  const exported = await download; const file = await exported.path(); assert.ok(file);
+  const bundle = JSON.parse(await readFile(file, 'utf8')); assert.ok(bundle.dataset && bundle.wishlist);
+  assert.ok(!JSON.stringify(bundle).includes('must not persist'));
+  const wishOnly = join(temporary,'wishlist.json'); await writeFile(wishOnly,JSON.stringify(bundle.wishlist));
+  await page.evaluate(() => chrome.storage.local.clear()); await page.reload();
+  await page.locator('#import').setInputFiles(wishOnly);
+  await page.waitForFunction(() => document.querySelector('#status')?.textContent === 'Wishlist imported.');
+  assert.equal(await page.locator('#booster-view').isHidden(),true);
+  const readWishlist = () => page.evaluate(async () => ((await chrome.storage.local.get('state')).state as { wishlist: unknown }).wishlist);
+  const savedWishlist = await readWishlist();
+  wishlistFail = true; await page.locator('#wishlist-sync').click();
+  await page.waitForFunction(() => document.querySelector('#status')?.textContent?.includes('HTTP 403'));
+  assert.deepEqual(await readWishlist(),savedWishlist); wishlistFail = false;
+  wishlistGate = new Promise<void>(resolve => { releasePendingResponse = resolve; });
+  const wishStarted = kyara.waitForRequest(req => new URL(req.url()).pathname === '/api/market/prices/1');
+  try {
+    await Promise.all([wishStarted,page.locator('#wishlist-sync').click()]);
+    await page.locator('#cancel').click();
+    await page.waitForFunction(() => document.querySelector('#status')?.textContent === 'Cancelling after the current request…');
+  } finally { releasePendingResponse?.(); releasePendingResponse = undefined; wishlistGate = undefined; }
+  await page.locator('#cancel').waitFor({ state: 'hidden' }); assert.deepEqual(await readWishlist(),savedWishlist);
+  await page.reload(); await page.locator('#wishlist-solve').click();
+  await page.waitForFunction(() => document.querySelector('#status')?.textContent?.includes('Optimal wishlist'));
+  assert.match(await page.locator('#wishlist-best').innerText(), /Rare/);
   await page.screenshot({ path: join(tmpdir(), 'kyara-extension.png'), fullPage: true });
   assert.deepEqual(errors, []);
   console.log('Browser extension passed: HiGHS WASM, all objectives, collection, account sync, credential isolation, failure preservation, and reload.');

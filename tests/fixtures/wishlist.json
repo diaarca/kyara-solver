@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "synthetic": true,
+  "collected_at": "2026-11-07T12:00:00Z",
+  "cards": [
+    {"id":"1","name":"Expensive rise","universe":"Fixture","collected_at":"2026-11-07T11:59:00Z","days":[{"day":"2026-10-30","median":100,"n":2},{"day":"2026-11-05","median":180,"n":2},{"day":"2026-11-06","median":200,"n":3},{"day":"2026-11-07","median":9999,"n":99}]},
+    {"id":"2","name":"Fast rise","universe":"Fixture","collected_at":"2026-11-07T11:59:01Z","days":[{"day":"2026-10-30","median":10,"n":10},{"day":"2026-11-05","median":20,"n":8},{"day":"2026-11-06","median":30,"n":12}]},
+    {"id":"3","name":"Falling","universe":"Fixture","collected_at":"2026-11-07T11:59:02Z","days":[{"day":"2026-10-30","median":20,"n":1},{"day":"2026-11-06","median":10,"n":1}]},
+    {"id":"4","name":"Sparse","universe":"Fixture","collected_at":"2026-11-07T11:59:03Z","days":[{"day":"2026-11-06","median":1,"n":1}]},
+    {"id":"5","name":"Zero baseline","universe":"Fixture","collected_at":"2026-11-07T11:59:04Z","days":[{"day":"2026-10-30","median":0,"n":1},{"day":"2026-11-06","median":10,"n":1}]},
+    {"id":"6","name":"Unsold day","universe":"Fixture","collected_at":"2026-11-07T11:59:05Z","days":[{"day":"2026-10-29","median":1,"n":1},{"day":"2026-11-01","median":1,"n":0},{"day":"2026-11-06","median":100,"n":2}]}
+  ]
+}

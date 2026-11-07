@@ -1,7 +1,8 @@
 import loadHighs from 'highs';
 import { solve } from './model';
+import { solveWishlist } from './wishlist';
 const highs = loadHighs({ locateFile: () => new URL('./vendor/highs.wasm', import.meta.url).href });
 self.onmessage = async ({ data }) => {
-  try { self.postMessage({ result: solve(await highs, data.dataset, data.options) }); }
+  try { self.postMessage({ result: data.kind === 'wishlist' ? solveWishlist(await highs, data.wishlist, data.options) : solve(await highs, data.dataset, data.options) }); }
   catch (e) { self.postMessage({ error: (e as Error).message }); }
 };

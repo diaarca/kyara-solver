@@ -6,6 +6,7 @@ export function allowedPath(path: string): boolean {
     || /^\/packs\/[A-Za-z0-9_-]+\/characters$/.test(path)
     || /^\/characters\/[0-9]+$/.test(path)
     || /^\/me\/collection\/prices\?ids=[0-9]+(?:,[0-9]+){0,199}$/.test(path)
+    || /^\/market\/prices\/[0-9]+$/.test(path) || path === '/me/wishlist'
     || path === '/me/renaissance?fresh=1' || path === '/me/collection?lean=1';
 }
 
@@ -16,6 +17,7 @@ export async function pageRequest(path: string) {
     || /^\/packs\/[A-Za-z0-9_-]+\/characters$/.test(path)
     || /^\/characters\/[0-9]+$/.test(path)
     || /^\/me\/collection\/prices\?ids=[0-9]+(?:,[0-9]+){0,199}$/.test(path)
+    || /^\/market\/prices\/[0-9]+$/.test(path) || path === '/me/wishlist'
     || path === '/me/renaissance?fresh=1' || path === '/me/collection?lean=1';
   if (!allowed) return { error: 'Unsupported data route' };
   try {

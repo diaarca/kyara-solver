@@ -143,3 +143,22 @@ Project code is licensed under [MIT](LICENSE). Dependencies retain their own
 licenses; the extension includes its [third-party notices](extension/THIRD_PARTY_LICENSES.txt).
 Kyara and third-party card artwork, names, and other game content remain the
 property of their respective owners. This is an independent community project.
+
+## Wishlist purchase priorities
+
+In the extension, open **Wishlist**, sync your wishlist and price history, then
+choose **percentage** or **absolute** increase over **1, 7, or 30 days** (default:
+7 days, percentage). This works without a booster or holdings sync. Kyara excludes
+owned cards from wishlists. Only wishlisted cards' history is fetched.
+
+```sh
+scrap --wishlist-state data/wishlist.json
+solve wishlist --wishlist-state data/wishlist.json --lookback-days 7 --metric percent
+solve wishlist --wishlist-state data/wishlist.json --metric absolute --format json
+```
+
+Priorities compare completed UTC daily medians, showing actual observation dates
+and sale counts. Sparse history is excluded; flat/falling prices yield no buy
+recommendation. This is an observed upward-price signal, not a future-price
+forecast. Solving works offline; snapshots and backups contain private wishlist
+information. Sync cancellation and failures preserve the previous completed data.
