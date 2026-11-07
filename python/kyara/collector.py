@@ -479,6 +479,7 @@ def main(argv=None):
     imports.add_argument("--full-refresh", action="store_true", help="Collect catalogue, all pools, batch medians, and representative odds samples")
     imports.add_argument("--rebirth-state", metavar="PATH", help="Capture current rebirth rarity requirements and holdings to PATH; skip price collection")
     parser.add_argument("--verify-published-baselines", action="store_true", help="Validate published rates and per-rarity samples for all boosters; report contradictions")
+    imports.add_argument("--wishlist-state", metavar="PATH", help="Sync wishlist and daily price history only")
     parser.add_argument("--transport", choices=("auto", "http", "browser"), default="auto", help="Auto uses the authorized macOS browser for batch workflows; HTTP elsewhere")
     parser.add_argument("--batch-size", type=int, default=200)
     parser.add_argument("--fingerprints", action="store_true", help="Print verification fingerprints for imported raw/HAR data without saving")
@@ -492,7 +493,7 @@ def main(argv=None):
         if not math.isfinite(args.interval) or args.interval < 1:
             raise DataError("--interval must be finite and at least 1 second")
         implicit = not any((args.import_raw, args.import_har, args.refresh_prices_from,
-                            args.full_refresh, args.catalog_only, args.booster_id, args.fingerprints, args.rebirth_state))
+                            args.full_refresh, args.catalog_only, args.booster_id, args.fingerprints, args.rebirth_state, args.wishlist_state))
         if implicit:
             if Path("data/raw.json").exists():
                 args.refresh_prices_from = "data/raw.json"
@@ -500,14 +501,25 @@ def main(argv=None):
                 args.full_refresh = True
             args.raw_output = args.raw_output or "data/raw.json"
         if args.transport == "auto":
-            args.transport = "browser" if sys.platform == "darwin" and (args.full_refresh or args.refresh_prices_from or args.rebirth_state) else "http"
+            args.transport = "browser" if sys.platform == "darwin" and (args.full_refresh or args.refresh_prices_from or args.rebirth_state or args.wishlist_state) else "http"
         if (args.full_refresh or args.refresh_prices_from) and not args.verification and Path("data/verification.json").exists():
             args.verification = "data/verification.json"
         if args.full_refresh and not args.verification_output:
             args.verification_output = "data/verification.json"
         verification = json.loads(Path(args.verification).read_text()) if args.verification else {"boosters": {}}
-        if args.transport == "browser" and not (args.refresh_prices_from or args.full_refresh or args.rebirth_state):
-            raise DataError("Use browser transport with --refresh-prices-from, --full-refresh, or --rebirth-state")
+        if args.transport == "browser" and not (args.refresh_prices_from or args.full_refresh or args.rebirth_state or args.wishlist_state):
+            raise DataError("Use browser transport with --refresh-prices-from, --full-refresh, --rebirth-state, or --wishlist-state")
+        if args.wishlist_state:
+            from .wishlist import collect_wishlist
+            opener = None
+            if args.transport == "browser":
+                from .browser import BrowserOpener
+                opener = BrowserOpener()
+            with database(args.database) as db:
+                state = collect_wishlist(Client(db, args.interval, opener=opener))
+            atomic_json(args.wishlist_state, state)
+            print(f"Saved daily price history for {len(state['cards'])} wishlisted cards to {args.wishlist_state}")
+            return 0
         if args.rebirth_state:
             from .rebirth import collect_rebirth
             raw_path = Path("data/raw.json")
