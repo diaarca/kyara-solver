@@ -60,7 +60,7 @@ class BrowserOpener:
                  re.fullmatch(r"ids=[0-9]+(?:,[0-9]+){0,199}", url.query))
         rebirth = ((url.path == "/api/me/renaissance" and url.query == "fresh=1")
                    or (url.path == "/api/me/collection" and url.query == "lean=1"))
-        public_data = (not url.query and (url.path in ("/api/characters", "/api/packs", "/api/rates", "/api/config")
+        public_data = (not url.query and (url.path in ("/api/me/wishlist", "/api/characters", "/api/packs", "/api/rates", "/api/config")
             or re.fullmatch(r"/api/packs/[A-Za-z0-9_-]+/characters", url.path)
             or re.fullmatch(r"/api/characters/[0-9]+", url.path)
             or re.fullmatch(r"/api/market/prices/[0-9]+", url.path)))
