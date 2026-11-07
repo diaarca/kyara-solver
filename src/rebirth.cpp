@@ -28,7 +28,7 @@ std::string card_id(const Json& value) {
 }
 
 double capped_new_cards(const Json& booster, const std::vector<std::string>& missing,
-                        int64_t deficit, double marginal_expectation, const Cards& cards) {
+                        int64_t deficit, double marginal_expectation, const Cards& cards, int64_t horizon) {
   if (missing.empty() || deficit == 0) return 0;
   if (static_cast<uint64_t>(deficit) >= missing.size()) return marginal_expectation;
   const auto verification = booster.value("verification", Json(nullptr));
@@ -46,6 +46,7 @@ double capped_new_cards(const Json& booster, const std::vector<std::string>& mis
     draws_total += draws;
   }
   if (draws_total == 0) invalid("Empty rebirth slot model");
+  draws_total *= horizon;
   if (deficit >= draws_total) return marginal_expectation;
   if (deficit > 10000000 / draws_total)
     invalid("Rebirth cap is too large for exact distinct-card progress evaluation");
@@ -73,7 +74,7 @@ double capped_new_cards(const Json& booster, const std::vector<std::string>& mis
     }
     useful = std::clamp(useful, 0.0, 1.0);
     if (useful == 0) continue;
-    auto draws = count(slot.at("draws"), "Slot draws");
+    auto draws = count(slot.at("draws"), "Slot draws") * horizon;
     for (int64_t draw = 0; draw < draws; ++draw) {
       std::vector<double> next(cap + 1, 0);
       next[cap] = distribution[cap];
@@ -121,7 +122,11 @@ State load(const Json& input, const Cards& cards, const std::set<std::string>& o
   return state;
 }
 
-Progress evaluate(const Json& booster, const Cards& cards, const State& state) {
+double occurrence(double p, int64_t horizon) {
+  return horizon == 1 ? p : -std::expm1(horizon * std::log1p(-p));
+}
+
+Progress evaluate(const Json& booster, const Cards& cards, const State& state, int64_t horizon) {
   Progress result;
   for (size_t i = 0; i < rarities.size(); ++i) {
     const auto& rarity = rarities[i];
@@ -131,11 +136,11 @@ Progress evaluate(const Json& booster, const Cards& cards, const State& state) {
     for (const auto& outcome : booster.at("outcomes")) {
       auto cid = card_id(outcome.at("card_id"));
       if (cards.at(cid).at("rarity") == rarity && !state.owned.contains(cid)) {
-        double occurrence = probability(outcome.at("occurrence_probability"));
-        if (occurrence > 0) { missing.push_back(cid); expected_new += occurrence; }
+        double p = probability(outcome.at("occurrence_probability"));
+        if (p > 0) { missing.push_back(cid); expected_new += occurrence(p, horizon); }
       }
     }
-    double credited = deficit == 0 ? 0 : capped_new_cards(booster, missing, deficit, expected_new, cards);
+    double credited = deficit == 0 ? 0 : capped_new_cards(booster, missing, deficit, expected_new, cards, horizon);
     double fraction = deficit == 0 ? 0 : credited / static_cast<double>(deficit);
     result.by_rarity[rarity] = {{"expected_distinct_new_cards", expected_new},
       {"expected_credited_cards", credited}, {"expected_fraction_of_remaining_gap", fraction}};

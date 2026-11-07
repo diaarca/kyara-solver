@@ -24,5 +24,6 @@ struct State {
 struct Progress { double score = 0; Json by_rarity = Json::object(); };
 
 State load(const Json& input, const Cards& cards, const std::set<std::string>& owned);
-Progress evaluate(const Json& booster, const Cards& cards, const State& state);
+double occurrence(double probability, int64_t horizon);
+Progress evaluate(const Json& booster, const Cards& cards, const State& state, int64_t horizon = 1);
 }  // namespace rebirth

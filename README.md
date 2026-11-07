@@ -143,3 +143,14 @@ Project code is licensed under [MIT](LICENSE). Dependencies retain their own
 licenses; the extension includes its [third-party notices](extension/THIRD_PARTY_LICENSES.txt).
 Kyara and third-party card artwork, names, and other game content remain the
 property of their respective owners. This is an independent community project.
+
+To compare the next 100 openings of each booster type, set **Number of boosters**
+in the extension or run:
+
+```sh
+solve --purchase-mode free --horizon 100 --rebirth-state data/rebirth.json
+```
+
+The horizon defaults to 1. Totals account for duplicates across all openings and
+remaining rebirth targets. Prices, pools and availability are held constant;
+opening resources are assumed sufficient. This chooses one type, not a mix.

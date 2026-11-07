@@ -30,6 +30,7 @@ struct Options {
   std::string rebirth_state;
   std::vector<std::string> universes;
   double weight = 1, fee = 0;
+  int64_t horizon = 1;
 };
 
 [[noreturn]] void fail(const std::string& message) { throw std::runtime_error(message); }
@@ -76,6 +77,7 @@ Usage: solve [options]
   --median-window 7d|30d   Default 7d; no missing-price substitution
   --fee NUMBER             Proportional sale fee in [0,1] (default 0)
   --purchase-mode paid|free  Chakra purchase or free-pack token (default paid)
+  --horizon NUMBER         Open one booster type this many times (1..10000; default 1)
   --format text|json       Output format (default text)
   --version                Print application version
 
@@ -106,6 +108,11 @@ Options parse(int argc, char** argv) {
     if (key == "--dataset") options.dataset = value;
     else if (key == "--owned") options.owned = value;
     else if (key == "--rebirth-state") options.rebirth_state = value;
+    else if (key == "--horizon") {
+      if (value.empty() || value.find_first_not_of("0123456789") != std::string::npos) fail("--horizon must be an integer in [1,10000]");
+      options.horizon = std::stoll(value);
+      if (options.horizon < 1 || options.horizon > 10000) fail("--horizon must be an integer in [1,10000]");
+    }
     else if (key == "--card-id") options.card_id = value;
     else if (key == "--universe") options.universes.push_back(value);
     else if (key == "--median-window") options.window = value;
@@ -241,25 +248,25 @@ json run(const Options& options, const json& data, const std::map<std::string, j
       double expected = finite_number(outcome.at("expected_copies"), "expected copies");
       double probability = finite_number(outcome.at("occurrence_probability"), "occurrence probability", 0, 1);
       if (probability > expected + 1e-12 || ((expected > 0) != (probability > 0))) fail("Inconsistent card moments");
-      if (targets.contains(cid)) c.progress += probability;
+      if (targets.contains(cid)) c.progress += rebirth::occurrence(probability, options.horizon);
       auto price = cards.at(cid).at("median" + options.window);
       if (price.is_null()) {
         c.profit_known = false;
         if (options.weight > 0) reasons.push_back("missing " + options.window + " median for card " + cid);
       } else {
         ++c.priced;
-        c.proceeds += expected * finite_number(price, "median price") * (1 - options.fee);
+        c.proceeds += options.horizon * expected * finite_number(price, "median price") * (1 - options.fee);
       }
     }
     if (rebirth_state && options.weight < 1 && reasons.empty()) {
       try {
-        c.rebirth_progress = rebirth::evaluate(booster, cards, *rebirth_state);
+        c.rebirth_progress = rebirth::evaluate(booster, cards, *rebirth_state, options.horizon);
         c.progress = c.rebirth_progress.score;
       } catch (const std::exception& error) {
         reasons.push_back(std::string("rebirth progress: ") + error.what());
       }
     }
-    c.profit = c.proceeds - c.cost;
+    c.profit = c.proceeds - options.horizon * c.cost;
     if (!std::isfinite(c.profit) || !std::isfinite(c.progress)) fail("Objective overflow");
     if (!reasons.empty()) excluded.push_back({{"id", c.id}, {"name", c.name}, {"reasons", reasons}});
     else candidates.push_back(c);
@@ -270,12 +277,13 @@ json run(const Options& options, const json& data, const std::map<std::string, j
     {"ortools_version", KYARA_ORTOOLS_VERSION},
     {"snapshot_id", data.at("snapshot_id")}, {"collected_at", data.at("collected_at")},
     {"synthetic", data.value("synthetic", false)}, {"purchase_mode", options.mode},
-    {"profit_weight", options.weight}, {"fee", options.fee}, {"median_window", options.window},
+    {"horizon", options.horizon}, {"profit_weight", options.weight}, {"fee", options.fee}, {"median_window", options.window},
     {"progress_objective", rebirth_state ? "rebirth" : "collection"},
     {"universes", selected}, {"owned_ids", owned}, {"missing_target_cards", targets.size()},
     {"score_scale", SCALE}, {"excluded", excluded}, {"warnings", json::array()},
     {"ranking", json::array()}, {"best", nullptr}, {"status", "NO_ELIGIBLE_BOOSTER"}
   };
+  if (options.horizon > 1) result["warnings"].push_back("Horizon assumes independent normal openings, fixed prices/pools/availability and sufficient opening resources; it is not a time forecast");
   if (rebirth_state) {
     result["rebirth"] = {{"next_rebirth", rebirth_state->next_rebirth},
       {"collected_at", rebirth_state->collected_at}, {"requirements", rebirth_state->summary},
@@ -337,11 +345,11 @@ json run(const Options& options, const json& data, const std::map<std::string, j
   result["status"] = "OPTIMAL";
   for (const auto& c : candidates) {
     result["ranking"].push_back({
-      {"id", c.id}, {"name", c.name}, {"cost", c.cost},
+      {"id", c.id}, {"name", c.name}, {"cost", c.cost}, {"total_cost", options.horizon * c.cost},
       {"opening_context", c.opening_context},
       {"expected_proceeds", c.profit_known ? json(c.proceeds) : json(nullptr)},
       {"expected_profit", c.profit_known ? json(c.profit) : json(nullptr)},
-      {"roi", c.profit_known && c.cost > 0 ? json(c.profit / c.cost) : json(nullptr)},
+      {"roi", c.profit_known && c.cost > 0 ? json(c.profit / (options.horizon * c.cost)) : json(nullptr)},
       {"expected_distinct_new_cards", rebirth_state ? json(nullptr) : json(c.progress)}, {"normalized_profit", c.normalized_profit},
       {"normalized_completion", rebirth_state ? json(nullptr) : json(c.normalized_progress)}, {"score", c.score},
       {"price_coverage", {{"known", c.priced}, {"total", c.total}}}
@@ -385,7 +393,7 @@ int main(int argc, char** argv) {
     if (options.format == "json") std::cout << result.dump(2) << '\n';
     else {
       std::cout << "Snapshot " << result["snapshot_id"].get<std::string>() << " (" << result["collected_at"].get<std::string>() << ")\n";
-      std::cout << "Mode: " << options.mode << "; profit weight: " << options.weight << "; fee: " << options.fee << '\n';
+      std::cout << "Mode: " << options.mode << "; profit weight: " << options.weight << "; horizon: " << options.horizon << "; fee: " << options.fee << '\n';
       if (result.contains("rebirth")) {
         std::cout << "Next rebirth: " << result["rebirth"]["next_rebirth"] << " (state "
                   << result["rebirth"]["collected_at"].get<std::string>() << ")\n";

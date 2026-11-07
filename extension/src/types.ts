@@ -18,17 +18,17 @@ export interface Rebirth {
   owned: string[]; requirements: Record<Rarity, { current: number; target: number }>;
 }
 export interface Options {
-  mode: 'free' | 'paid'; goal: 'profit' | 'collection' | 'rebirth'; weight: number;
+  horizon?: number; mode: 'free' | 'paid'; goal: 'profit' | 'collection' | 'rebirth'; weight: number;
   window: '7d' | '30d'; fee: number; universes: string[]; owned: string[]; rebirth?: Rebirth;
 }
 export interface Candidate {
-  id: string; name: string; cost: number; expected_profit: number | null;
+  id: string; name: string; cost: number; total_cost: number; expected_profit: number | null;
   progress: number; normalized_profit: number; normalized_progress: number; score: number;
   price_coverage: { known: number; total: number }; rebirth_by_rarity?: Json;
 }
 export interface Result {
   status: 'OPTIMAL' | 'NO_ELIGIBLE_BOOSTER' | 'REBIRTH_RARITY_TARGETS_MET'; solver: string;
-  snapshot_id: string; collected_at: string; ranking: Candidate[]; best: Candidate | null;
+  snapshot_id: string; collected_at: string; horizon: number; ranking: Candidate[]; best: Candidate | null;
   excluded: { id: string; reasons: string[] }[]; warnings: string[];
   recommend_paid_purchase: boolean | null; model: string;
 }

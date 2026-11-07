@@ -30,6 +30,7 @@
         <label>Booster type<select id="mode"><option value="free">Free boosters</option><option value="paid">Paid boosters</option></select></label>
         <label>Goal<select id="goal"><option value="profit">Profit</option><option value="collection">Universe completion</option><option value="rebirth">Rebirth progress</option></select></label>
         <label>Median price window<select id="window"><option value="7d">7 days</option><option value="30d">30 days</option></select></label>
+        <label>Number of boosters<input id="horizon" type="number" min="1" max="10000" step="1" value="1" required></label>
         <label>Selling fee (%)<input id="fee" type="number" min="0" max="100" step="0.1" value="0" required></label>
       </div>
       <div id="progress-fields" hidden>
@@ -48,8 +49,8 @@
   </section>
   <p id="status" role="status" aria-live="polite"></p>
   <section id="results" hidden aria-labelledby="result-title">
-    <h2 id="result-title">Recommendation</h2><p id="best"></p>
-    <div class="table-wrap"><table><thead><tr><th>Booster</th><th>Expected profit</th><th>Progress</th><th>Score</th><th>Prices known</th></tr></thead><tbody id="ranking"></tbody></table></div>
+    <h2 id="result-title">Recommendation</h2><p id="horizon-summary"></p><p id="best"></p>
+    <div class="table-wrap"><table><thead><tr><th>Booster</th><th>Total cost</th><th>Expected profit (total)</th><th>Progress (total)</th><th>Score</th><th>Prices known</th></tr></thead><tbody id="ranking"></tbody></table></div>
     <ul id="warnings"></ul>
     <details><summary>Excluded boosters</summary><ul id="exclusions"></ul></details>
     <div class="actions"><button id="export-result" type="button" class="secondary">Export result</button><button id="export-model" type="button" class="secondary">Export mathematical model (.lp)</button></div>

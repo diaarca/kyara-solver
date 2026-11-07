@@ -126,3 +126,20 @@ two account GETs above and stores only normalized holdings and rarity criteria.
 Imported datasets are validated but require a full metadata refresh before further
 collection. Validation establishes consistency with published odds, not a guarantee
 about undocumented server mechanics.
+
+## Booster horizon
+
+`--horizon H` (1..10000; default 1) ranks H independent normal openings of one
+booster type, at fixed prices and availability, assuming sufficient resources.
+Profit is H times one-opening profit. For a missing card with one-opening
+occurrence p, its horizon occurrence is `1-(1-p)^H`; distinct-card values are
+summed after that transformation, so duplicates across openings count once.
+Rebirth uses `E[min(K_r(H), remaining_r)]` over the entire horizon. Its existing
+exact distinct-count program repeats each slot group H times; within-rarity
+uniform transition kernels commute, so grouping identical draws preserves the
+result. Binding caps retain the 10-million-cell work limit and unsupported models
+are excluded explicitly. Horizon 1 preserves previous calculations. This is a
+count of openings, not a forecast of future market prices or pity state.
+
+Result objectives are horizon totals; `cost` remains the effective cost per
+opening, `total_cost` is H times that cost, and `horizon` is recorded in the result.
