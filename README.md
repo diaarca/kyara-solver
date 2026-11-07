@@ -5,36 +5,60 @@ Use the browser extension (TypeScript / HiGHS), or the Python/C++ command line.
 
 ## Browser extension
 
-The extension runs locally on desktop Chrome and compatible Chromium browsers, on Windows, Linux, and macOS. Users need no terminal or server.
+Use desktop Chrome or a compatible Chromium browser on Windows, Linux, or macOS.
+**No terminal, Nix, or Node.js is needed to install a downloaded build.**
 
-1. Open the browser's Extensions page and enable **Developer mode**.
-2. Choose **Load unpacked** and select the built extension folder (see below).
-3. Click the extension icon. Keep Kyara open and logged in, then choose **Update
-   prices** and optionally **Sync holdings & rebirth**.
-4. Choose free/paid boosters, a goal, universes, and a profit weight; click
-   **Find best booster**.
+### Download and install
 
-Collection runs in the Kyara tab without AppleScript. Prices, holdings, parameters,
-and results stay on the device. Solving works offline with cached data. The page
-supports importing CLI `data/latest.json`, backups, and exporting results and the
-HiGHS MILP model (`.lp`). Keep backups private: they can include owned card IDs.
+1. Download **`kyara-solver.zip`** from the [Releases page](https://github.com/diaarca/kyara-solver/releases).
+   If no packaged release is available, [download a CI build](#download-a-ci-build).
+   Choose the extension ZIP, not GitHub's **Source code** archives.
+2. **Extract the ZIP** into a folder you will keep, such as `Documents/kyara-solver`.
+   The folder must contain `manifest.json`, `app.js`, and `vendor/`.
+3. Open your browser's Extensions page:
+   - Chrome: enter `chrome://extensions` in the address bar.
+   - Vivaldi: enter `vivaldi://extensions`.
+   - Edge: enter `edge://extensions`.
+4. Enable **Developer mode**, click **Load unpacked**, and select the extracted
+   folder containing `manifest.json`—not the ZIP or a parent folder.
+5. Open [Kyara](https://kyara.games), log in, and click **Kyara Solver** in your
+   browser's Extensions menu. You can pin it to the toolbar for easy access.
+6. For boosters, click **Update prices** and optionally **Sync holdings & rebirth**,
+   then choose your parameters and **Find best booster**. For purchase advice,
+   open **Wishlist**, sync its price history, and choose **Find purchase priority**.
 
-Build/package for distribution (contributors only):
+Keep the extracted folder in place: the browser loads the extension from it.
+Keep the solver page and your logged-in Kyara tab open while collecting data.
+The extension does not require AppleScript or the macOS browser-automation setting.
+Calculations and data stay on your device; solving works offline with cached data.
+
+### Download a CI build
+
+CI builds are available before a release is published:
+
+1. Sign in to GitHub and open the [CI workflow](https://github.com/diaarca/kyara-solver/actions/workflows/ci.yml?query=branch%3Amain).
+2. Select a **successful run on `main`**. Under **Artifacts**, download
+   **`kyara-solver-extension`**. Artifacts are retained for 14 days.
+3. Extract the downloaded artifact archive, then extract the **`kyara-solver.zip`**
+   inside it. Continue at installation step 3 above.
+
+### Update an installed extension
+
+Export a backup from **Import or export data** first; backups can include private
+holdings and wishlist information. Download the new ZIP and replace the files in
+the same installed folder, then click **Reload** on the Extensions page and reopen
+Kyara Solver. Updates are manual; you do not need to remove the extension.
+
+### Build from source (contributors)
 
 ```sh
-nix build .#extension  # Load result/; distributable archive: result/kyara-solver.zip
+nix build .#extension  # Load result/; distributable ZIP: result/kyara-solver.zip
 # Or, with Node.js and Python 3 available:
 cd extension
 npm ci
 npm run build         # Load extension/dist/ from the repository root
 npm test
 ```
-
-An archive recipient can unzip it and load the folder without build tools.
-This version is unpacked; it has not been published to the Chrome Web Store.
-Successful [CI runs](https://github.com/diaarca/kyara-solver/actions/workflows/ci.yml)
-provide a `kyara-solver-extension` artifact for 14 days. Extract the artifact,
-then extract its `kyara-solver.zip` and load the folder containing `manifest.json`.
 
 ## Command-line setup
 
