@@ -88,19 +88,23 @@ export function validateRebirth(input: unknown, cards: Map<string, Card>): Rebir
   return { ...input, owned } as Rebirth;
 }
 
-export function rebirthProgress(b: Booster, cards: Map<string, Card>, state: Rebirth) {
+export function occurrence(p: number, horizon: number): number {
+  return horizon === 1 ? p : -Math.expm1(horizon * Math.log1p(-p));
+}
+
+export function rebirthProgress(b: Booster, cards: Map<string, Card>, state: Rebirth, horizon = 1) {
   const owned = new Set(state.owned), byRarity: Record<string, unknown> = {};
   let score = 0, unfinished = 0;
   for (const r of RARITIES) {
     const d = Math.max(0, state.requirements[r].target - state.requirements[r].current);
     if (d > 0) unfinished++;
     const missing = b.outcomes.filter(o => cards.get(o.card_id)!.rarity === r && !owned.has(o.card_id) && o.occurrence_probability > 0);
-    const expected = missing.reduce((s, o) => s + o.occurrence_probability, 0);
+    const expected = missing.reduce((s, o) => s + occurrence(o.occurrence_probability, horizon), 0);
     let credited = d === 0 ? 0 : expected;
     if (d > 0 && d < missing.length) {
       const model = b.verification?.model;
       check(model?.type === 'independent_slots' && model.slots?.length, 'Capped rebirth requires independent-slot model');
-      const draws = model.slots.reduce((s, slot) => s + slot.draws, 0);
+      const draws = model.slots.reduce((s, slot) => s + slot.draws * horizon, 0);
       if (d < draws) {
         check(d * draws <= 10000000, 'Rebirth cap exceeds exact evaluation limit');
         let distribution = new Float64Array(d + 1); distribution[0] = 1;
@@ -108,7 +112,7 @@ export function rebirthProgress(b: Booster, cards: Map<string, Card>, state: Reb
           const ps = missing.map(o => slot.probabilities[o.card_id] ?? 0);
           check(d === 1 || ps.every(p => Math.abs(p - ps[0]) < 1e-12), 'Capped rebirth needs uniform missing-card probabilities');
           const q = Math.min(1, ps.reduce((s, p) => s + p, 0));
-          for (let draw = 0; draw < slot.draws; draw++) {
+          for (let draw = 0; draw < slot.draws * horizon; draw++) {
             const next = new Float64Array(d + 1); next[d] = distribution[d];
             for (let k = 0; k < d; k++) {
               const p = q * (1 - k / missing.length);
@@ -117,7 +121,7 @@ export function rebirthProgress(b: Booster, cards: Map<string, Card>, state: Reb
             distribution = next;
           }
         }
-        credited = distribution.reduce((s, p, k) => s + p * k, 0);
+        credited = Math.min(d, Math.max(0, distribution.reduce((s, p, k) => s + p * k, 0)));
       }
     }
     const fraction = d > 0 ? credited / d : 0;
@@ -128,6 +132,8 @@ export function rebirthProgress(b: Booster, cards: Map<string, Card>, state: Reb
 }
 
 export function formulate(dataset: Dataset, options: Options): Result {
+  const horizon = integer(options.horizon ?? 1, 'horizon', 10000);
+  check(horizon > 0, 'Horizon must be in [1,10000]');
   number(options.weight, 'profit weight', 1); number(options.fee, 'selling fee', 1);
   check(['free', 'paid'].includes(options.mode) && ['7d', '30d'].includes(options.window)
     && ['profit', 'collection', 'rebirth'].includes(options.goal), 'Invalid solver options');
@@ -140,10 +146,11 @@ export function formulate(dataset: Dataset, options: Options): Result {
   check(options.goal !== 'collection' || selected.size > 0, 'Choose at least one universe');
   check([...selected].every(n => names.has(n)), 'Unknown selected universe');
   const result: Result = { status: 'NO_ELIGIBLE_BOOSTER', solver: 'HiGHS (WebAssembly)', snapshot_id: dataset.snapshot_id,
-    collected_at: dataset.collected_at, ranking: [], best: null, excluded: [], warnings: [
+    collected_at: dataset.collected_at, horizon, ranking: [], best: null, excluded: [], warnings: [
       'Normal-opening baseline; golden, pity and god-pack effects are excluded.',
       'Historical medians estimate resale value; sales are not guaranteed.'
     ], recommend_paid_purchase: null, model: '' };
+  if (horizon > 1) result.warnings.push('Horizon assumes independent normal openings, fixed prices/pools/availability and sufficient opening resources; it is not a time forecast.');
   if (dataset.synthetic) result.warnings.push('Synthetic fixture: not live Kyara data.');
   if (Date.now() - Date.parse(dataset.collected_at) > 86400000) result.warnings.push('Snapshot is older than 24 hours; refresh prices and availability.');
   if (options.fee === 0) result.warnings.push('Selling fee is assumed to be zero.');
@@ -165,20 +172,20 @@ export function formulate(dataset: Dataset, options: Options): Result {
     let proceeds = 0, progress = 0, known = 0;
     for (const o of b.outcomes) {
       const card = cards.get(o.card_id)!;
-      if (options.goal === 'collection' && selected.has(card.universe) && !owned.has(card.id)) progress += o.occurrence_probability;
+      if (options.goal === 'collection' && selected.has(card.universe) && !owned.has(card.id)) progress += occurrence(o.occurrence_probability, horizon);
       const price = card[`median${options.window}`];
       if (price === null) { if (options.weight > 0) reasons.push(`Missing ${options.window} median for card ${card.id}`); }
-      else { known++; proceeds += o.expected_copies * price * (1 - options.fee); }
+      else { known++; proceeds += horizon * o.expected_copies * price * (1 - options.fee); }
     }
     let byRarity;
     if (state && options.weight < 1 && !reasons.length) {
-      try { const p = rebirthProgress(b, cards, state); progress = p.score; byRarity = p.byRarity; }
+      try { const p = rebirthProgress(b, cards, state, horizon); progress = p.score; byRarity = p.byRarity; }
       catch (e) { reasons.push(`Rebirth progress: ${(e as Error).message}`); }
     }
     check(Number.isFinite(proceeds) && Number.isFinite(progress), 'Objective overflow');
     if (reasons.length) result.excluded.push({ id: b.id, reasons });
-    else result.ranking.push({ id: b.id, name: b.name, cost,
-      expected_profit: known === b.outcomes.length ? proceeds - cost : null, progress,
+    else result.ranking.push({ id: b.id, name: b.name, cost, total_cost: horizon * cost,
+      expected_profit: known === b.outcomes.length ? proceeds - horizon * cost : null, progress,
       normalized_profit: 0, normalized_progress: 0, score: 0,
       price_coverage: { known, total: b.outcomes.length }, rebirth_by_rarity: byRarity });
   }

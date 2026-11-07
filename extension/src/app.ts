@@ -107,7 +107,7 @@ function options(): Options {
   const goal = select('goal').value as Options['goal'];
   check(state.dataset, 'Update or import a dataset first');
   if (goal === 'collection' && input('use-holdings').checked) check(state.rebirth, 'Sync holdings first, or uncheck “Use synced holdings” to enter card IDs');
-  return { goal, mode: select('mode').value as Options['mode'], window: select('window').value as Options['window'],
+  return { horizon: Number(input('horizon').value), goal, mode: select('mode').value as Options['mode'], window: select('window').value as Options['window'],
     weight: goal === 'profit' ? 1 : Number(input('weight').value) / 100, fee: Number(input('fee').value) / 100,
     universes: goal === 'collection' ? [...el('universes').querySelectorAll<HTMLInputElement>('input:checked')].map(c => c.value) : [],
     owned: goal === 'collection' ? input('use-holdings').checked ? state.rebirth!.owned : [...new Set(input('owned').value.split(/[\s,]+/).filter(Boolean))] : [],
@@ -115,13 +115,14 @@ function options(): Options {
 }
 function showResult(r: Result, o: Options) {
   result = r; el('results').hidden = false;
+  el('horizon-summary').textContent = `Expected outcome from ${r.horizon} openings of the same booster type.`;
   el('best').textContent = r.status === 'REBIRTH_RARITY_TARGETS_MET' ? 'All rarity targets are already met.'
     : r.best ? r.recommend_paid_purchase === false ? `No purchase recommended. Best evaluated pack: ${r.best.name}` : `Best booster: ${r.best.name}` : 'No eligible booster. Check the exclusions below.';
   el('ranking').replaceChildren();
   for (const c of r.ranking) {
     const row = document.createElement('tr');
     const progress = o.goal === 'profit' ? '—' : o.goal === 'rebirth' ? `${format(c.progress * 100)}% of remaining gap` : `${format(c.progress)} new cards`;
-    for (const text of [c.name, format(c.expected_profit), progress, format(c.score / 1000000), `${c.price_coverage.known}/${c.price_coverage.total}`]) {
+    for (const text of [c.name, format(c.total_cost), format(c.expected_profit), progress, format(c.score / 1000000), `${c.price_coverage.known}/${c.price_coverage.total}`]) {
       const cell = document.createElement('td'); cell.textContent = text; row.append(cell);
     }
     el('ranking').append(row);
@@ -181,6 +182,7 @@ async function init() {
   renderState(); updateView(state.view ?? (!state.dataset && state.wishlist ? 'wishlist' : 'boosters'));
   if (state.wishlistOptions) { select('wishlist-days').value = String(state.wishlistOptions.lookback_days); select('wishlist-metric').value = state.wishlistOptions.metric; }
   if (state.options) {
+    input('horizon').value = String(state.options.horizon ?? 1);
     select('mode').value = state.options.mode; select('goal').value = state.options.goal;
     select('window').value = state.options.window; input('fee').value = String(state.options.fee * 100);
     input('weight').value = String(state.options.weight * 100); input('owned').value = state.options.owned.join(', ');

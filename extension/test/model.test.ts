@@ -79,10 +79,11 @@ test('browser HiGHS agrees with C++ CP-SAT on all current objectives', { skip: !
   const dir = mkdtempSync(join(tmpdir(), 'kyara-parity-'));
   try {
     writeFileSync(join(dir, 'data.json'), JSON.stringify(data)); writeFileSync(join(dir, 'state.json'), JSON.stringify(rebirth()));
-    for (const o of [options(), options({ mode: 'free' }), options({ fee: .05, window: '30d' }),
+    for (const base of [options(), options({ mode: 'free' }), options({ fee: .05, window: '30d' }),
       ...[0, .5, 1].map(weight => options({ goal: 'collection', weight, universes: ['Black Clover'] })),
-      ...[0, .5, 1].map(weight => options({ goal: 'rebirth', weight, rebirth: rebirth() }))]) {
-      const args = ['--dataset', join(dir, 'data.json'), '--purchase-mode', o.mode, '--profit-weight', String(o.weight), '--fee', String(o.fee), '--median-window', o.window, '--format', 'json'];
+      ...[0, .5, 1].map(weight => options({ goal: 'rebirth', weight, rebirth: rebirth() }))]) for (const horizon of [1, 2, 100]) {
+      const o = { ...base, horizon };
+      const args = ['--horizon', String(o.horizon), '--dataset', join(dir, 'data.json'), '--purchase-mode', o.mode, '--profit-weight', String(o.weight), '--fee', String(o.fee), '--median-window', o.window, '--format', 'json'];
       if (o.goal === 'collection') args.push('--universe', 'Black Clover');
       if (o.goal === 'rebirth') args.push('--rebirth-state', join(dir, 'state.json'));
       const p = spawnSync(process.env.KYARA_SOLVER!, args, { encoding: 'utf8' }); assert.equal(p.status, 0, p.stderr);
@@ -95,4 +96,45 @@ test('browser HiGHS agrees with C++ CP-SAT on all current objectives', { skip: !
       }
     }
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('horizon totals scale profit and preserve per-opening cost', () => {
+  const one = run({ horizon: 1 }), many = run({ horizon: 100 });
+  assert.equal(many.horizon, 100); assert.equal(many.best!.id, one.best!.id);
+  assert.equal(many.best!.expected_profit, 9000); assert.equal(many.best!.cost, 20); assert.equal(many.best!.total_cost, 2000);
+  assert.deepEqual(one.ranking.map(c => [c.id, c.score]), run().ranking.map(c => [c.id, c.score]));
+});
+test('horizon duplicates saturate and can change the completion winner', () => {
+  const d = structuredClone(data);
+  d.cards = [1, 2, 3].map(id => ({ id: String(id), name: String(id), universe: 'Test', rarity: 'R', median7d: 1, median30d: 1 }));
+  d.boosters = [
+    { id: 'a', name: 'One card', cost: 1, available: true, uses_free_packs: true, issues: [], verification: { model: { type: 'independent_slots', slots: [{ draws: 1, probabilities: { '1': 1 } }] } }, outcomes: [{ card_id: '1', expected_copies: 1, occurrence_probability: 1 }] },
+    { id: 'b', name: 'Three cards', cost: 1, available: true, uses_free_packs: true, issues: [], verification: { model: { type: 'independent_slots', slots: [{ draws: 1, probabilities: { '1': 1/3, '2': 1/3, '3': 1/3 } }] } }, outcomes: d.cards.map(c => ({ card_id: c.id, expected_copies: 1/3, occurrence_probability: 1/3 })) }
+  ];
+  const o = { goal: 'collection' as const, weight: 0, universes: ['Test'] };
+  assert.equal(run({ ...o, horizon: 1 }, d).best!.id, 'a');
+  const two = run({ ...o, horizon: 2 }, d); assert.equal(two.best!.id, 'b'); assert.ok(Math.abs(two.best!.progress - 5/3) < 1e-12);
+  assert.equal(run({ ...o, horizon: 10000 }, d).best!.progress, 3);
+});
+test('rebirth caps apply across openings, including exact cap two', () => {
+  const state = rebirth();
+  const r = run({ goal: 'rebirth', weight: 0, rebirth: state, horizon: 2 });
+  assert.equal(r.ranking.find(b => b.id === 'a')!.progress, .46875);
+  const d = structuredClone(data);
+  d.cards = [1, 2, 3].map(id => ({ id: String(id), name: String(id), universe: 'Test', rarity: 'R', median7d: 1, median30d: 1 }));
+  d.boosters = [{ id: 'cap', name: 'Cap', cost: 1, available: true, uses_free_packs: true, issues: [],
+    verification: { model: { type: 'independent_slots', slots: [{ draws: 3, probabilities: { '1': 1/3, '2': 1/3, '3': 1/3 } }] } },
+    outcomes: d.cards.map(c => ({ card_id: c.id, expected_copies: 1, occurrence_probability: 19/27 })) }];
+  state.owned = []; for (const r of RARITIES) state.requirements[r] = { current: 0, target: r === 'R' ? 2 : 0 };
+  assert.ok(Math.abs(run({ goal: 'rebirth', weight: 0, rebirth: state, horizon: 2 }, d).best!.progress - (1 - 1/486)) < 1e-12);
+});
+test('invalid horizons and expensive capped evaluations are rejected', () => {
+  for (const horizon of [0, -1, .5, 10001, NaN, Infinity]) assert.throws(() => run({ horizon }));
+  const d = structuredClone(data);
+  d.cards = Array.from({ length: 20 }, (_, i) => ({ id: String(i), name: String(i), universe: 'Test', rarity: 'R', median7d: 1, median30d: 1 }));
+  d.boosters = [{ id: 'large', name: 'Large', cost: 1, available: true, uses_free_packs: true, issues: [],
+    verification: { model: { type: 'independent_slots', slots: [{ draws: 100, probabilities: Object.fromEntries(d.cards.map(c => [c.id, .05])) }] } },
+    outcomes: d.cards.map(c => ({ card_id: c.id, expected_copies: 5, occurrence_probability: 1 - .95**100 })) }];
+  const state = rebirth(); state.owned = []; for (const r of RARITIES) state.requirements[r] = { current: 0, target: r === 'R' ? 11 : 0 };
+  assert.equal(run({ goal: 'rebirth', weight: 0, rebirth: state, horizon: 10000 }, d).status, 'NO_ELIGIBLE_BOOSTER');
 });

@@ -127,32 +127,19 @@ Imported datasets are validated but require a full metadata refresh before furth
 collection. Validation establishes consistency with published odds, not a guarantee
 about undocumented server mechanics.
 
-## Wishlist purchase priority
+## Booster horizon
 
-Wishlist capture reads `/me/wishlist` (card IDs) and `/market/prices/{id}` for each
-wishlisted card, using `/characters` for names. The latter supplies `days` with
-`day` (YYYY-MM-DD), `median`, and `n` (sale count). Raw recent-sales/account fields
-are discarded. No booster collection, holdings sync, or purchase operation is
-required. Failed or cancelled collection preserves the previous completed state.
+`--horizon H` (1..10000; default 1) ranks H independent normal openings of one
+booster type, at fixed prices and availability, assuming sufficient resources.
+Profit is H times one-opening profit. For a missing card with one-opening
+occurrence p, its horizon occurrence is `1-(1-p)^H`; distinct-card values are
+summed after that transformation, so duplicates across openings count once.
+Rebirth uses `E[min(K_r(H), remaining_r)]` over the entire horizon. Its existing
+exact distinct-count program repeats each slot group H times; within-rarity
+uniform transition kernels commute, so grouping identical draws preserves the
+result. Binding caps retain the 10-million-cell work limit and unsupported models
+are excluded explicitly. Horizon 1 preserves previous calculations. This is a
+count of openings, not a forecast of future market prices or pity state.
 
-The schema-version-1 snapshot stores `collected_at` and `cards`, each containing
-`id`, `name`, `universe`, `collected_at`, and the daily rows. Backups can include
-an optional `wishlist` alongside the existing booster fields, or a standalone
-wishlist snapshot. Treat it as private account information.
-
-For a lookback L in 1/7/30 days (default 7), the end is the last completed UTC day
-relative to capture time. The start is end minus L calendar days. Use the earliest
-and latest distinct days in that inclusive interval with positive sale counts and
-non-null medians; report their actual dates/span and sale counts. The partial
-capture day is excluded. Compute `delta = latest - earlier` or
-`percent = 100 * delta / earlier` (default). Percentage scoring requires a positive
-baseline. Fewer than two observations exclude a card; days without sales are not
-invented or filled forward. Overlapping 7-/30-day summaries are not a dated trend.
-
-HiGHS in the extension and CP-SAT in the CLI select exactly one rising card with
-binary y_c, maximizing `sum(score_c * y_c)`, subject to `sum(y_c)=1`. Scores are
-`round(1e6 * signal_c / max_signal)`, then multiplied by n+1 with subordinate
-ascending-card-ID tie breaking. Flat/falling cards are listed without a buy
-recommendation. No positive signals return NO_RISING_CARDS; no usable history
-returns NO_ELIGIBLE_CARD. These observed increases are not forecasts or guaranteed
-purchase prices; no budget or automatic purchase is modeled.
+Result objectives are horizon totals; `cost` remains the effective cost per
+opening, `total_cost` is H times that cost, and `horizon` is recorded in the result.

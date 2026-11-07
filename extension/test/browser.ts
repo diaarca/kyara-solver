@@ -28,6 +28,11 @@ try {
   await page.locator('#mode').selectOption('paid'); await page.locator('#solve').click();
   await page.waitForFunction(() => document.querySelector('#status')?.textContent?.includes('Optimal solution'));
   assert.match(await page.locator('#best').innerText(), /Profit pack/);
+  await page.locator('#horizon').fill('100'); await page.locator('#solve').click();
+  await page.waitForFunction(() => document.querySelector('#status')?.textContent?.includes('Optimal solution'));
+  assert.match(await page.locator('#horizon-summary').innerText(), /100 openings/);
+  await page.reload(); await page.waitForFunction(() => (document.querySelector('#horizon') as HTMLInputElement)?.value === '100');
+  await page.locator('#horizon').fill('1');
   await page.locator('#goal').selectOption('collection');
   await page.locator('#universes input[value="Black Clover"]').check();
   await page.locator('#solve').click();
