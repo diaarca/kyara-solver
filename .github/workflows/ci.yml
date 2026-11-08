@@ -37,7 +37,6 @@ jobs:
           python-version: '3.13'
       - run: npm ci
       - run: npm run build
-      - run: npm test
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
 

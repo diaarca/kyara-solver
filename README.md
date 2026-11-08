@@ -1,6 +1,7 @@
 # Kyara Solver
 
-Rank Kyara boosters by profit, universe completion, or rebirth progress.
+Rank Kyara boosters by profit, universe completion, or rebirth progress, and
+prioritize wishlisted cards by observed price increases.
 Use the browser extension (TypeScript / HiGHS), or the Python/C++ command line.
 
 ## Browser extension
@@ -62,6 +63,8 @@ npm test
 
 ## Command-line setup
 
+The terminal workflow supports macOS and Linux; use WSL2 on Windows.
+
 ```sh
 nix develop
 # Or use direnv with an .envrc containing: use flake
@@ -85,6 +88,7 @@ HTTP elsewhere may require `KYARA_TOKEN` and `KYARA_DEVICE_ID`.
 scrap                                # Refresh prices; full collection on first run
 scrap --full-refresh                 # Refresh catalogue, pools, odds, and prices
 scrap --rebirth-state data/rebirth.json  # Sync holdings and rebirth targets only
+scrap --wishlist-state data/wishlist.json  # Sync wishlist and daily price history
 ```
 
 Prices are fetched in batches of 200. Refresh metadata after pool/rule changes;
@@ -98,6 +102,7 @@ refresh rebirth state after openings, trades, or rebirth. Collection is read-onl
 | `data/snapshots/` | Archived solver inputs |
 | `data/kyara.sqlite` | Response checkpoints and snapshot history |
 | `data/rebirth.json` | Optional rebirth targets and unique holdings |
+| `data/wishlist.json` | Optional wishlist and daily price history |
 
 Data stays local and ignored by Git. Failed collection preserves the last completed
 JSON export. Save the dataset, holdings, and lock file to replay a result.
@@ -111,6 +116,7 @@ solve universes                      # Available universe names
 solve --purchase-mode free --universe "Black Clover" \
   --owned owned.json --profit-weight 0.5
 solve --purchase-mode free --rebirth-state data/rebirth.json
+solve --purchase-mode free --horizon 100 --rebirth-state data/rebirth.json
 solve owned add --owned owned.json --card-id 123
 solve owned remove --owned owned.json --card-id 123
 solve owned list --owned owned.json
@@ -123,6 +129,11 @@ of each unfinished rarity gap filled, capped at its target. It defaults to weigh
 0, includes holdings, and cannot be combined with `--owned` or `--universe`.
 Only rarity requirements are considered; this does not establish rebirth eligibility.
 
+`--horizon H` compares H openings of each booster type (1–10000; default 1).
+Profit and distinct-card progress cover the entire horizon, accounting for
+duplicates and remaining rebirth targets. Prices, pools, and availability stay
+constant, and sufficient resources are assumed. This chooses one type, not a mix.
+
 Other options: `--dataset PATH`, `--median-window 7d|30d`, `--fee FRACTION`,
 `--format text|json`. See `solve --help` and `scrap --help` for all options.
 Solving uses saved files and works offline.
@@ -132,6 +143,20 @@ Missing prices exclude boosters when profit has positive weight. Unverified odds
 are excluded. Golden, pity, and god-pack effects are not modeled. Historical
 medians do not guarantee sale prices. The tool never opens packs or trades.
 Exit codes: 0 success, 2 invalid input/collection failure, 3 no eligible booster.
+
+### Wishlist purchase priority
+
+```sh
+solve wishlist --wishlist-state data/wishlist.json --lookback-days 7 --metric percent
+```
+
+Choose `--metric absolute|percent` and `--lookback-days 1|7|30` (defaults:
+percent and 7). The solver prioritizes positive changes between the earliest and
+latest daily medians with sales in the window, excluding today's incomplete UTC
+day. It reports the actual dates and sales counts; sparse history can cover less
+than the selected window. With no positive signal it recommends no purchase.
+These are observed changes, not forecasts or guaranteed purchase prices. Wishlist
+solving needs only its own snapshot, independently of booster collection.
 
 ## Development
 
@@ -143,8 +168,10 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-`python/kyara/` collects and validates data; `src/` implements scoring and CP-SAT;
-`tests/` uses synthetic fixtures and mocked requests, without contacting Kyara.
+`python/kyara/` collects and validates data; `dataset.py` owns normalization and
+shared data rules, while `collector.py` handles the CLI and storage. `src/`
+implements scoring and CP-SAT; `tests/` uses synthetic fixtures and mocked
+requests, without contacting Kyara.
 `extension/src/` contains the form, browser collector, validation, and HiGHS worker.
 `extension/test/` checks the browser implementation against CLI fixtures. For the
 end-to-end extension test, run `npx playwright install chromium` and
@@ -167,14 +194,3 @@ Project code is licensed under [MIT](LICENSE). Dependencies retain their own
 licenses; the extension includes its [third-party notices](extension/THIRD_PARTY_LICENSES.txt).
 Kyara and third-party card artwork, names, and other game content remain the
 property of their respective owners. This is an independent community project.
-
-To compare the next 100 openings of each booster type, set **Number of boosters**
-in the extension or run:
-
-```sh
-solve --purchase-mode free --horizon 100 --rebirth-state data/rebirth.json
-```
-
-The horizon defaults to 1. Totals account for duplicates across all openings and
-remaining rebirth targets. Prices, pools and availability are held constant;
-opening resources are assumed sufficient. This chooses one type, not a mix.

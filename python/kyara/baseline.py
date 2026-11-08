@@ -6,7 +6,7 @@ It does not claim to model golden, pity, or god-pack outcomes.
 from collections import Counter
 import math
 
-from .collector import DataError, digest, identifier, indexed, mechanics_digest, moments, number
+from .dataset import DataError, digest, identifier, indexed, mechanics_digest, moments, number
 
 RARITIES = ("C", "U", "R", "E", "L", "M")
 

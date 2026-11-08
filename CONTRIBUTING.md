@@ -44,6 +44,8 @@ executable if needed. Nix on Windows requires WSL2 for the CLI workflow.
   fixtures and mocked requests; tests must not need a Kyara account or live API.
 - Preserve deterministic scoring and parity between the C++ and browser solvers.
   `nix flake check` includes the cross-solver parity tests.
+  CI runs these once through Nix, and builds and tests the extension UI on all
+  three supported desktop platforms.
 - Open a PR describing the change, related issue, and checks run. Include a
   screenshot for interface changes when useful.
 

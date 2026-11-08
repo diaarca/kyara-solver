@@ -11,8 +11,9 @@ fields have been sanitized. A small fictional dataset is usually sufficient to
 reproduce a solver problem.
 
 Kyara requests are read-only. The browser extension keeps credentials inside the
-Kyara tab and stores datasets and holdings locally. Backups can contain owned
-card IDs; review them before sharing. There is no project-operated solver server.
+Kyara tab and stores datasets, holdings, and wishlists locally. Backups can contain
+private holdings and wishlist information; review them before sharing. There is
+no project-operated solver server.
 
 Use the latest code on `main` when checking whether a problem is still present;
 older versions do not have a separate security-maintenance commitment. Report

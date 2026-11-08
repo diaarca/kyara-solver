@@ -2,7 +2,7 @@
 import re
 from datetime import date
 
-from .collector import DataError, identifier, indexed, now, number, timestamp
+from .dataset import DataError, identifier, indexed, now, number, timestamp
 
 
 def normalize_price_history(body, cid, card, collected_at):
