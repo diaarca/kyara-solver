@@ -4,37 +4,47 @@
 
 For booster b and card c, N_bc is the number of copies obtained. The dataset
 stores both expected copies E[N_bc] and occurrence probability Pr(N_bc >= 1).
-With historical median m_c, sale fee f, and opening cost C_b:
+For H independent openings of one booster type, with historical median m_c,
+sale fee f, and per-opening cost C_b:
 
-    profit P_b = sum_c E[N_bc] * m_c * (1-f) - C_b
-    completion U_b = sum_{c in missing selected cards} Pr(N_bc >= 1)
+    profit P_b(H) = H * (sum_c E[N_bc] * m_c * (1-f) - C_b)
+    completion U_b(H) = sum_{c in missing selected cards} (1-(1-Pr(N_bc >= 1))^H)
 
 Completion counts distinct new cards, including duplicates at most once. It is
 an expectation, not the probability of completing a universe. Owned cards remain
-included in profit. Free mode sets opening cost to zero.
+included in profit. Free mode sets opening cost to zero. The horizon is 1–10000
+(default 1); prices, availability, and probability models stay fixed, and opening
+resources are assumed sufficient. This selects one booster type, not a mix.
+Result objectives are horizon totals; `cost` remains per-opening and `total_cost`
+is H times that cost. The result also records `horizon`.
 
 For rebirth, D_r = max(target_r - current_r, 0), K_br is the number of distinct
-unowned cards of rarity r obtained, and A contains unfinished rarities:
+unowned cards of rarity r obtained across H openings, and A contains unfinished
+rarities:
 
-    rebirth R_b = sum_{r in A} E[min(K_br, D_r)] / D_r / |A|
+    rebirth R_b(H) = sum_{r in A} E[min(K_br(H), D_r)] / D_r / |A|
 
 Each unfinished rarity has equal weight. The cap is inside the expectation:
 with one Mythic missing, credit is the probability of any new Mythic. If no target
 remains, pure rebirth returns REBIRTH_RARITY_TARGETS_MET without a recommendation.
-This scores the next opening; it does not optimize time to rebirth or other criteria.
+This scores progress across the horizon; it does not optimize time to rebirth or
+other criteria.
 
 When caps cannot bind, card occurrence probabilities suffice. Otherwise a dynamic
 program tracks capped distinct counts. With m missing cards and a draw hitting
 them with probability q, state k advances with probability q*(m-k)/m; the cap is
 absorbing. This requires uniform per-slot probabilities among missing cards for
-caps above one. Incompatible or insufficient models are excluded.
+caps above one. Each slot group's draws are repeated H times. These uniform
+transition kernels commute, so grouped identical draws preserve the result.
+Binding caps have a 10-million-cell work limit. Incompatible or insufficient
+models are excluded.
 
 ## Selection
 
 Normalize each objective to [0,1] using its minimum and maximum over eligible
 boosters; constant objectives contribute zero. With alpha = --profit-weight:
 
-    score_b = alpha * normalized(P_b) + (1-alpha) * normalized(U_b or R_b)
+    score_b = alpha * normalized(P_b(H)) + (1-alpha) * normalized(U_b(H) or R_b(H))
     sum_b x_b = 1
     maximize sum_b x_b * round(1,000,000 * score_b), x_b Boolean
 
@@ -47,6 +57,25 @@ with the ranking. Direct enumeration would also suffice for the current single c
 Weights compare observed ranges, so changing eligible boosters can change tradeoffs.
 Inactive objectives do not require their data. Pure profit recommends no paid
 purchase when all evaluated paid boosters have negative expected profit.
+
+## Wishlist purchase priority
+
+The separate wishlist model compares observed daily median increases. Let the
+last completed UTC day before capture be e. A lookback L (1, 7, or 30 days;
+default 7) includes dates from e-L through e, inclusive. For each card, select the
+earliest and latest medians with positive sales counts in this window. At least
+two dated observations are required. With first median a and last median z:
+
+    absolute signal = z-a
+    percent signal = 100*(z-a)/a, requiring a > 0
+
+The default metric is percent. Only positive signals are eligible. Each is
+scaled to `round(1,000,000 * signal / maximum_signal)` and passed to the same
+exactly-one choice model and ID tie-break above. Zero or negative signals are
+reported without a purchase recommendation; absent history is excluded.
+The result records actual observation dates, elapsed days, medians, and sales
+counts. Sparse history is not interpolated or annualized. This is a ranking of
+past changes, not a forecast or a guarantee of current purchase prices.
 
 ## Probability models
 
@@ -83,8 +112,9 @@ Undocumented Kyara GET endpoints under `/api`:
 | `/packs`, `/packs/{id}/characters` | Booster definitions and card pools |
 | `/rates`, `/config` | Probability rules |
 | `/me/collection/prices?ids=...` | Batch 7-/30-day medians and sales counts |
-| `/market/prices/{id}` | Individual price summary |
+| `/market/prices/{id}` | Individual price summary and daily history |
 | `/me/renaissance?fresh=1`, `/me/collection?lean=1` | Rebirth requirements and holdings |
+| `/me/wishlist` | Wishlisted card IDs |
 
 Requests are sequential, at least one second apart, with bounded retries and
 Retry-After handling. Access denials stop collection. Browser requests use an
@@ -109,6 +139,14 @@ mismatches stop sync. Other account criteria are discarded. The solver checks
 counts again against its dataset. Targets vary with captured state, not hard-coded
 levels. Keep holdings local and refresh them when they change.
 
+Wishlist sync fetches the catalogue, wishlist IDs, and each wishlisted card's
+daily market history. It does not require a booster dataset. Schema version 1
+contains `collected_at`, optional `synthetic`, and `cards`; each card has `id`,
+`name`, `universe`, `collected_at`, and `days` entries with `day`, nullable
+`median`, and sale count `n`. Duplicate IDs/dates, invalid dates or prices, and
+card captures after the snapshot are rejected. Wishlist exports are private
+account data and should stay local.
+
 For offline imports, use `scrap --import-raw PATH --verification PATH` or
 `scrap --import-har PATH`. HARs must include successful catalogue and booster
 response bodies. Import keeps allowlisted responses and discards request credentials;
@@ -126,20 +164,3 @@ two account GETs above and stores only normalized holdings and rarity criteria.
 Imported datasets are validated but require a full metadata refresh before further
 collection. Validation establishes consistency with published odds, not a guarantee
 about undocumented server mechanics.
-
-## Booster horizon
-
-`--horizon H` (1..10000; default 1) ranks H independent normal openings of one
-booster type, at fixed prices and availability, assuming sufficient resources.
-Profit is H times one-opening profit. For a missing card with one-opening
-occurrence p, its horizon occurrence is `1-(1-p)^H`; distinct-card values are
-summed after that transformation, so duplicates across openings count once.
-Rebirth uses `E[min(K_r(H), remaining_r)]` over the entire horizon. Its existing
-exact distinct-count program repeats each slot group H times; within-rarity
-uniform transition kernels commute, so grouping identical draws preserves the
-result. Binding caps retain the 10-million-cell work limit and unsupported models
-are excluded explicitly. Horizon 1 preserves previous calculations. This is a
-count of openings, not a forecast of future market prices or pity state.
-
-Result objectives are horizon totals; `cost` remains the effective cost per
-opening, `total_cost` is H times that cost, and `horizon` is recorded in the result.

@@ -1,7 +1,7 @@
 """Collect static booster data and a bounded set of odds-validation samples."""
 import time
 
-from .collector import CONFIG_FIELDS, DataError, identifier, indexed, now
+from .dataset import CONFIG_FIELDS, DataError, identifier, indexed, now
 
 
 def collect_metadata(client):

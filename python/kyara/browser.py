@@ -15,7 +15,7 @@ import urllib.error
 from urllib.parse import urlsplit
 import uuid
 
-from .collector import DataError
+from .dataset import DataError
 
 
 def execute(js, application="com.vivaldi.Vivaldi"):

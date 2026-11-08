@@ -2,7 +2,7 @@
 from copy import deepcopy
 import time
 
-from .collector import DataError, identifier, indexed, now, number
+from .dataset import DataError, identifier, indexed, now, number
 
 ROUTE = "/me/collection/prices"
 

@@ -1,5 +1,5 @@
 """Capture only the current rebirth rarity targets and unique-card holdings."""
-from .collector import DataError, identifier, indexed, now, timestamp
+from .dataset import DataError, identifier, indexed, now, timestamp
 
 RARITY_KEYS = {"C": "C", "U": "U", "R": "R", "E": "E", "legendaries": "L", "mythics": "M"}
 

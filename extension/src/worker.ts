@@ -3,6 +3,14 @@ import { solve } from './model';
 import { solveWishlist } from './wishlist';
 const highs = loadHighs({ locateFile: () => new URL('./vendor/highs.wasm', import.meta.url).href });
 self.onmessage = async ({ data }) => {
-  try { self.postMessage({ result: data.kind === 'wishlist' ? solveWishlist(await highs, data.wishlist, data.options) : solve(await highs, data.dataset, data.options) }); }
-  catch (e) { self.postMessage({ error: (e as Error).message }); }
+  try {
+    self.postMessage({
+      result:
+        data.kind === 'wishlist'
+          ? solveWishlist(await highs, data.wishlist, data.options)
+          : solve(await highs, data.dataset, data.options),
+    });
+  } catch (error) {
+    self.postMessage({ error: error instanceof Error ? error.message : String(error) });
+  }
 };
