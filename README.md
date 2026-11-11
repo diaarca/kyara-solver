@@ -1,7 +1,8 @@
 # Kyara Solver
 
-Rank Kyara boosters by profit, universe completion, or rebirth progress, and
-prioritize wishlisted cards by observed price increases.
+Rank Kyara boosters by profit, universe completion, or rebirth progress,
+prioritize wishlisted cards by observed price increases, and find the cheapest
+new series to complete by buying missing cards.
 Use the browser extension (TypeScript / HiGHS), or the Python/C++ command line.
 
 ## Browser extension
@@ -27,6 +28,8 @@ Use desktop Chrome or a compatible Chromium browser on Windows, Linux, or macOS.
 6. For boosters, click **Update prices** and optionally **Sync holdings & rebirth**,
    then choose your parameters and **Find best booster**. For purchase advice,
    open **Wishlist**, sync its price history, and choose **Find purchase priority**.
+   For a new series, open **New series**, click **Sync missions, holdings & prices**,
+   then **Find cheapest new series**. This needs no booster or wishlist sync.
 
 Keep the extracted folder in place: the browser loads the extension from it.
 Keep the solver page and your logged-in Kyara tab open while collecting data.
@@ -46,11 +49,25 @@ CI builds are available before a release is published:
 ### Update an installed extension
 
 Export a backup from **Import or export data** first; backups can include private
-holdings and wishlist information. Download the new ZIP and replace the files in
-the same installed folder, then click **Reload** on the Extensions page and reopen
+holdings, completed series, and wishlist information. Download the new ZIP and
+replace the files in the same installed folder, then click **Reload** on the Extensions page and reopen
 Kyara Solver. Updates are manual; you do not need to remove the extension.
 
 ### Build from source (contributors)
+
+From the repository root, rebuild the unpacked extension with:
+
+```sh
+nix run .#build-extension
+# Inside nix develop or direnv:
+build-extension
+```
+
+This installs the locked npm dependencies and builds the current local sources
+into `extension/dist/`, including new source files. Load that folder in Chrome;
+after rebuilding, click **Reload** on the Extensions page and reopen Kyara Solver.
+
+For a Nix package and distributable archive, or a manual build:
 
 ```sh
 nix build .#extension  # Load result/; distributable ZIP: result/kyara-solver.zip
@@ -73,8 +90,9 @@ direnv allow
 
 Run commands from the project root. `scrap` and `solve` wrap `nix run .#scrap --`
 and `nix run .#solve --`: changed sources rebuild automatically; unchanged builds
-are cached. Use `direnv reload` after environment changes. New source files must
-be known to Git (`git add` or `git add -N`). Dependencies are pinned in `flake.lock`.
+are cached. Use `direnv reload` after environment changes. Git-backed Nix package
+builds require new source files to be known to Git (`git add` or `git add -N`);
+`build-extension` builds local sources directly. Dependencies are pinned in `flake.lock`.
 ARM macOS is tested; Intel macOS and ARM/Intel Linux outputs are also defined.
 
 ## Collect
@@ -89,6 +107,7 @@ scrap                                # Refresh prices; full collection on first 
 scrap --full-refresh                 # Refresh catalogue, pools, odds, and prices
 scrap --rebirth-state data/rebirth.json  # Sync holdings and rebirth targets only
 scrap --wishlist-state data/wishlist.json  # Sync wishlist and daily price history
+scrap --series-state data/series.json      # Sync missions, holdings, and new-series prices
 ```
 
 Prices are fetched in batches of 200. Refresh metadata after pool/rule changes;
@@ -103,6 +122,7 @@ refresh rebirth state after openings, trades, or rebirth. Collection is read-onl
 | `data/kyara.sqlite` | Response checkpoints and snapshot history |
 | `data/rebirth.json` | Optional rebirth targets and unique holdings |
 | `data/wishlist.json` | Optional wishlist and daily price history |
+| `data/series.json` | Completed/remaining series, holdings, and missing-card prices |
 
 Data stays local and ignored by Git. Failed collection preserves the last completed
 JSON export. Save the dataset, holdings, and lock file to replay a result.
@@ -158,6 +178,30 @@ than the selected window. With no positive signal it recommends no purchase.
 These are observed changes, not forecasts or guaranteed purchase prices. Wishlist
 solving needs only its own snapshot, independently of booster collection.
 
+### Cheapest new series
+
+```sh
+scrap --series-state data/series.json
+solve series --series-state data/series.json --median-window 7d
+```
+
+The solver groups the catalogue by universe and considers series with at least
+five characters. It excludes every completion recorded in Missions, including
+unclaimed rewards and series whose cards you no longer own. The local snapshot
+stores both completed and remaining eligible series.
+
+Each series costs the sum of its missing cards' historical medians; owned cards
+are free. Choose `--median-window 7d|30d` (default 7d). A series with any unknown
+missing-card price is excluded. Results rank series by total remaining cost and
+list missing cards cheapest first, breaking ties by card ID; tied series use
+universe name. Purchase order does not change the estimated total. A fully owned
+series absent from Missions needs no purchase and is reported as ready.
+
+Sync again after buying, trading, rebirth, or completing a series. Prices estimate
+costs, not current listings or availability. The solver never buys or claims
+anything. Use `--format json` to export every ranked series and its purchase plan.
+Series solving works offline with its own snapshot, independently of boosters.
+
 ## Development
 
 ```sh
@@ -170,8 +214,9 @@ ctest --test-dir build --output-on-failure
 
 `python/kyara/` collects and validates data; `dataset.py` owns normalization and
 shared data rules, while `collector.py` handles the CLI and storage. `src/`
-implements scoring and CP-SAT; `tests/` uses synthetic fixtures and mocked
-requests, without contacting Kyara.
+implements booster/wishlist scoring with CP-SAT and exact enumeration of series
+completion costs; `tests/` uses synthetic fixtures and mocked requests, without
+contacting Kyara.
 `extension/src/` contains the form, browser collector, validation, and HiGHS worker.
 `extension/test/` checks the browser implementation against CLI fixtures. For the
 end-to-end extension test, run `npx playwright install chromium` and

@@ -16,6 +16,7 @@ import {
   type WishlistResult,
 } from './wishlist';
 import { KyaraClient, kyaraTab, collectMarket, collectAccount } from './collect';
+import { collectSeries, validateSeries, type SeriesState, type SeriesResult } from './series';
 
 interface State {
   dataset?: Dataset;
@@ -24,12 +25,14 @@ interface State {
   options?: Options;
   wishlist?: WishlistState;
   wishlistOptions?: WishlistOptions;
+  series?: SeriesState;
+  seriesWindow?: '7d' | '30d';
   view?: string;
 }
 let state: State = {},
   busy = false,
   controller: AbortController | undefined,
-  result: Result | WishlistResult | undefined;
+  result: Result | WishlistResult | SeriesResult | undefined;
 let worker: Worker | undefined;
 let cancelSolve: (() => void) | undefined;
 const el = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -60,13 +63,14 @@ function updateFields() {
 }
 function updateView(view: string) {
   state.view = view;
-  for (const name of ['boosters', 'wishlist']) {
+  for (const name of ['boosters', 'wishlist', 'series']) {
     el(`show-${name}`).setAttribute('aria-pressed', String(view === name));
     el(`show-${name}`).classList.toggle('secondary', view !== name);
   }
-  el('booster-view').hidden = view === 'wishlist';
+  el('booster-view').hidden = view !== 'boosters';
   el('wishlist-view').hidden = view !== 'wishlist';
-  el('results').hidden = view === 'wishlist' || !result || 'metric' in result;
+  el('series-view').hidden = view !== 'series';
+  el('results').hidden = view !== 'boosters' || !result || !('horizon' in result);
 }
 async function changeView(view: string) {
   updateView(view);
@@ -82,7 +86,11 @@ el('show-boosters').onclick = () => {
 el('show-wishlist').onclick = () => {
   void changeView('wishlist');
 };
+el('show-series').onclick = () => { void changeView('series'); };
 function renderState() {
+  el('series-snapshot').textContent = state.series
+    ? `${state.series.remaining_series.length} remaining series with at least 5 characters · ${state.series.completed_series.length} completed in missions · synced ${new Date(state.series.collected_at).toLocaleString()}`
+    : 'No series snapshot yet. Sync missions, holdings and prices to find a new series.';
   el('wishlist-snapshot').textContent = state.wishlist
     ? `${state.wishlist.cards.length} wishlisted cards · synced ${new Date(state.wishlist.collected_at).toLocaleString()}`
     : 'No wishlist snapshot yet. Keep Kyara logged in and sync your wishlist.';
@@ -121,11 +129,13 @@ async function save(updated: State = state) {
 
 type BoosterRequest = { dataset: Dataset; options: Options };
 type WishlistRequest = { kind: 'wishlist'; wishlist: WishlistState; options: WishlistOptions };
+type SeriesRequest = { kind: 'series'; series: SeriesState; window: '7d' | '30d' };
 function solveInWorker(request: BoosterRequest): Promise<Result>;
 function solveInWorker(request: WishlistRequest): Promise<WishlistResult>;
+function solveInWorker(request: SeriesRequest): Promise<SeriesResult>;
 function solveInWorker(
-  request: BoosterRequest | WishlistRequest,
-): Promise<Result | WishlistResult> {
+  request: BoosterRequest | WishlistRequest | SeriesRequest,
+): Promise<Result | WishlistResult | SeriesResult> {
   return new Promise((resolve, reject) => {
     worker = new Worker(new URL('worker.js', location.href), { type: 'module' });
     worker.onmessage = ({ data }) =>
@@ -166,6 +176,7 @@ async function task(action: () => Promise<void>) {
   result = undefined;
   el('results').hidden = true;
   el('wishlist-results').hidden = true;
+  el('series-results').hidden = true;
   setBusy(true);
   try {
     await action();
@@ -328,8 +339,9 @@ input('import').onchange = () => {
     const datasetInput =
       imported.dataset ?? (Array.isArray(imported.boosters) ? imported : undefined);
     const wishlistInput =
-      imported.wishlist ?? (!datasetInput && Array.isArray(imported.cards) ? imported : undefined);
-    check(datasetInput || wishlistInput, 'Import a booster dataset, wishlist snapshot, or backup');
+      imported.wishlist ?? (!datasetInput && !Object.hasOwn(imported, 'completed_series') && Array.isArray(imported.cards) ? imported : undefined);
+    const seriesInput = imported.series ?? (Object.hasOwn(imported, 'completed_series') ? imported : undefined);
+    check(datasetInput || wishlistInput || seriesInput, 'Import a booster dataset, wishlist/series snapshot, or backup');
     const updated: State = { ...state };
     if (datasetInput) {
       updated.dataset = validateDataset(datasetInput);
@@ -339,7 +351,8 @@ input('import').onchange = () => {
         : undefined;
     }
     if (wishlistInput) updated.wishlist = validateWishlist(wishlistInput);
-    updated.view = datasetInput ? 'boosters' : 'wishlist';
+    if (seriesInput) updated.series = validateSeries(seriesInput);
+    updated.view = datasetInput ? 'boosters' : seriesInput ? 'series' : 'wishlist';
     await save(updated);
     await chrome.storage.local.remove('checkpoint');
     renderState();
@@ -347,20 +360,20 @@ input('import').onchange = () => {
     status(
       datasetInput
         ? 'Dataset imported. Refresh the catalogue before collecting new prices.'
-        : 'Wishlist imported.',
+        : seriesInput ? 'Series imported.' : 'Wishlist imported.',
     );
   });
   input('import').value = '';
 };
 el('export').onclick = () => {
-  if (!state.dataset && !state.wishlist) {
+  if (!state.dataset && !state.wishlist && !state.series) {
     status('No dataset to export', true);
     return;
   }
   download(
     'kyara-backup.json',
     JSON.stringify(
-      { dataset: state.dataset, rebirth: state.rebirth, wishlist: state.wishlist },
+      { dataset: state.dataset, rebirth: state.rebirth, wishlist: state.wishlist, series: state.series },
       null,
       2,
     ),
@@ -386,10 +399,12 @@ async function init() {
         new Map(saved.dataset.cards.map((c: any) => [c.id, c])),
       );
     if (saved.wishlist) saved.wishlist = validateWishlist(saved.wishlist);
+    if (saved.series) saved.series = validateSeries(saved.series);
     state = saved;
   }
   renderState();
-  updateView(state.view ?? (!state.dataset && state.wishlist ? 'wishlist' : 'boosters'));
+  updateView(state.view ?? (!state.dataset && state.series ? 'series' : !state.dataset && state.wishlist ? 'wishlist' : 'boosters'));
+  select('series-window').value = state.seriesWindow ?? '7d';
   if (state.wishlistOptions) {
     select('wishlist-days').value = String(state.wishlistOptions.lookback_days);
     select('wishlist-metric').value = state.wishlistOptions.metric;
@@ -472,6 +487,45 @@ el('wishlist-export-result').onclick = () => {
 };
 el('wishlist-export-model').onclick = () => {
   if (result?.model) download('kyara-wishlist.lp', result.model, 'text/plain');
+};
+
+el('series-sync').onclick = () => {
+  void task(async () => {
+    controller = new AbortController();
+    el('cancel').textContent = 'Cancel update';
+    const client = new KyaraClient(await kyaraTab(), controller.signal, status);
+    const series = await collectSeries(client, status);
+    controller.signal.throwIfAborted();
+    await save({ ...state, series });
+    renderState();
+    status('Missions, holdings and series prices synced.');
+  });
+};
+el<HTMLFormElement>('series-parameters').onsubmit = (event) => {
+  event.preventDefault();
+  void task(async () => {
+    check(state.series, 'Sync or import a series snapshot first');
+    const window = select('series-window').value as '7d' | '30d';
+    await save({ ...state, seriesWindow: window });
+    status('Comparing new series completion costs…');
+    const r = await solveInWorker({ kind: 'series', series: state.series!, window });
+    result = r;
+    el('series-results').hidden = false;
+    const first = r.best?.missing_cards[0];
+    el('series-best').textContent = r.best
+      ? first
+        ? `Cheapest new series: ${r.best.universe} · estimated total ${format(r.best.total_cost)}. Buy first: ${first.name} (${first.id}), estimated ${format(first.price)}.`
+        : `${r.best.universe} needs no purchase. All cards are owned; check Missions for completion.`
+      : 'No eligible new series with complete prices. Check exclusions below.';
+    renderRows('series-ranking', r.ranking.map(row => [row.universe, `${row.owned_cards}/${row.total_cards}`, String(row.missing_cards.length), format(row.total_cost)]));
+    renderRows('series-purchases', (r.best?.missing_cards ?? []).map(card => [card.id, card.name, format(card.price)]));
+    renderList('series-warnings', r.warnings);
+    renderList('series-exclusions', r.excluded.map(row => `${row.universe}: ${row.reasons.join('; ')}`));
+    status('Series analysis complete.');
+  });
+};
+el('series-export-result').onclick = () => {
+  if (result && 'window' in result) download('kyara-series-result.json', JSON.stringify(result, null, 2));
 };
 
 void init().catch((error) =>

@@ -7,7 +7,7 @@ export function allowedPath(path: string): boolean {
     || /^\/characters\/[0-9]+$/.test(path)
     || /^\/me\/collection\/prices\?ids=[0-9]+(?:,[0-9]+){0,199}$/.test(path)
     || /^\/market\/prices\/[0-9]+$/.test(path) || path === '/me/wishlist'
-    || path === '/me/renaissance?fresh=1' || path === '/me/collection?lean=1';
+    || path === '/me/progress' || path === '/me/renaissance?fresh=1' || path === '/me/collection?lean=1';
 }
 
 // Serialized into the Kyara tab; do not reference extension variables here.
@@ -18,7 +18,7 @@ export async function pageRequest(path: string) {
     || /^\/characters\/[0-9]+$/.test(path)
     || /^\/me\/collection\/prices\?ids=[0-9]+(?:,[0-9]+){0,199}$/.test(path)
     || /^\/market\/prices\/[0-9]+$/.test(path) || path === '/me/wishlist'
-    || path === '/me/renaissance?fresh=1' || path === '/me/collection?lean=1';
+    || path === '/me/progress' || path === '/me/renaissance?fresh=1' || path === '/me/collection?lean=1';
   if (!allowed) return { error: 'Unsupported data route' };
   try {
     const headers: Record<string, string> = { Accept: 'application/json' };

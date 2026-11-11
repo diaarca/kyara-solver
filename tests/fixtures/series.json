@@ -1,0 +1,189 @@
+{
+  "schema_version": 1,
+  "collected_at": "2026-11-11T12:00:00Z",
+  "synthetic": true,
+  "cards": [
+    {
+      "id": "1",
+      "name": "Almost there 1",
+      "universe": "Almost there",
+      "median7d": 9,
+      "median30d": 20
+    },
+    {
+      "id": "2",
+      "name": "Almost there 2",
+      "universe": "Almost there",
+      "median7d": 9,
+      "median30d": 20
+    },
+    {
+      "id": "3",
+      "name": "Almost there 3",
+      "universe": "Almost there",
+      "median7d": 9,
+      "median30d": 20
+    },
+    {
+      "id": "4",
+      "name": "Almost there 4",
+      "universe": "Almost there",
+      "median7d": 9,
+      "median30d": 20
+    },
+    {
+      "id": "5",
+      "name": "Almost there 5",
+      "universe": "Almost there",
+      "median7d": 9,
+      "median30d": 20
+    },
+    {
+      "id": "6",
+      "name": "From scratch 1",
+      "universe": "From scratch",
+      "median7d": 2,
+      "median30d": 1
+    },
+    {
+      "id": "7",
+      "name": "From scratch 2",
+      "universe": "From scratch",
+      "median7d": 2,
+      "median30d": 1
+    },
+    {
+      "id": "8",
+      "name": "From scratch 3",
+      "universe": "From scratch",
+      "median7d": 2,
+      "median30d": 1
+    },
+    {
+      "id": "9",
+      "name": "From scratch 4",
+      "universe": "From scratch",
+      "median7d": 2,
+      "median30d": 1
+    },
+    {
+      "id": "10",
+      "name": "From scratch 5",
+      "universe": "From scratch",
+      "median7d": 2,
+      "median30d": 1
+    },
+    {
+      "id": "11",
+      "name": "Done 1",
+      "universe": "Done",
+      "median7d": 0,
+      "median30d": 0
+    },
+    {
+      "id": "12",
+      "name": "Done 2",
+      "universe": "Done",
+      "median7d": 0,
+      "median30d": 0
+    },
+    {
+      "id": "13",
+      "name": "Done 3",
+      "universe": "Done",
+      "median7d": 0,
+      "median30d": 0
+    },
+    {
+      "id": "14",
+      "name": "Done 4",
+      "universe": "Done",
+      "median7d": 0,
+      "median30d": 0
+    },
+    {
+      "id": "15",
+      "name": "Done 5",
+      "universe": "Done",
+      "median7d": 0,
+      "median30d": 0
+    },
+    {
+      "id": "16",
+      "name": "Small 1",
+      "universe": "Small",
+      "median7d": 0,
+      "median30d": 0
+    },
+    {
+      "id": "17",
+      "name": "Small 2",
+      "universe": "Small",
+      "median7d": 0,
+      "median30d": 0
+    },
+    {
+      "id": "18",
+      "name": "Small 3",
+      "universe": "Small",
+      "median7d": 0,
+      "median30d": 0
+    },
+    {
+      "id": "19",
+      "name": "Small 4",
+      "universe": "Small",
+      "median7d": 0,
+      "median30d": 0
+    },
+    {
+      "id": "20",
+      "name": "Unknown 1",
+      "universe": "Unknown",
+      "median7d": null,
+      "median30d": null
+    },
+    {
+      "id": "21",
+      "name": "Unknown 2",
+      "universe": "Unknown",
+      "median7d": null,
+      "median30d": null
+    },
+    {
+      "id": "22",
+      "name": "Unknown 3",
+      "universe": "Unknown",
+      "median7d": null,
+      "median30d": null
+    },
+    {
+      "id": "23",
+      "name": "Unknown 4",
+      "universe": "Unknown",
+      "median7d": null,
+      "median30d": null
+    },
+    {
+      "id": "24",
+      "name": "Unknown 5",
+      "universe": "Unknown",
+      "median7d": null,
+      "median30d": null
+    }
+  ],
+  "owned": [
+    "1",
+    "2",
+    "3",
+    "4"
+  ],
+  "completed_series": [
+    "Done"
+  ],
+  "remaining_series": [
+    "Almost there",
+    "From scratch",
+    "Unknown"
+  ]
+}

@@ -44,6 +44,8 @@ try {
 
   // Exercise real script injection and authenticated GETs against mocked Kyara.
   const wishlistFixture = JSON.parse(await readFile(new URL('../../tests/fixtures/wishlist.json', import.meta.url), 'utf8'));
+  const seriesFixture = JSON.parse(await readFile(new URL('../../tests/fixtures/series.json', import.meta.url), 'utf8'));
+  let seriesMode = false, seriesFail = false;
   let wishlistFail = false, wishlistGate: Promise<void> | undefined;
   const raw = baselineFixture(); const calls: string[] = []; let pricesFail = false;
   let priceGate: Promise<void> | undefined;
@@ -55,7 +57,8 @@ try {
     calls.push(new URL(req.url()).pathname + new URL(req.url()).search);
     assert.equal(req.method(), 'GET'); assert.equal(req.headers().authorization, 'Bearer test-token-stays-in-tab');
     let body: unknown;
-    if (path === '/characters') body = raw.catalog;
+    if (path === '/characters') body = seriesMode
+      ? seriesFixture.cards.map((c: any) => ({ id: c.id, name: c.name, series: c.universe })) : raw.catalog;
     else if (path === '/packs') body = raw.packs;
     else if (path === '/rates') body = {};
     else if (path === '/config') body = raw.rules.config;
@@ -66,7 +69,13 @@ try {
       if (gate) await gate;
       if (pricesFail) { await route.fulfill({ status: 403, contentType: 'application/json', body: '{}' }); return; }
       // A cancelled response must never replace the saved prices.
-      body = gate ? { '1': { median7d: 999, median30d: 999 }, '2': { median7d: 888, median30d: 888 } } : raw.prices;
+      if (seriesMode) {
+        const ids = new URL(req.url()).searchParams.get('ids')!.split(',');
+        body = seriesFixture.cards.filter((c: any) => ids.includes(c.id)).map((c: any) => ({ characterId: c.id, median7d: c.median7d, median30d: c.median30d }));
+      } else body = gate ? { '1': { median7d: 999, median30d: 999 }, '2': { median7d: 888, median30d: 888 } } : raw.prices;
+    } else if (path === '/me/progress') {
+      if (seriesFail) { await route.fulfill({ status: 403, contentType: 'application/json', body: '{}' }); return; }
+      body = { series: [{ series: 'Done', size: 5, claimed: false, completedAt: seriesFixture.collected_at }], private: 'must not persist' };
     } else if (path === '/me/wishlist') body = [1, 2];
     else if (path.startsWith('/market/prices/')) {
       const gate = wishlistGate; if (gate) await gate;
@@ -78,7 +87,8 @@ try {
         day: new Date(Date.parse(r.day+'T00:00:00Z')+shift).toISOString().slice(0,10), median: gate ? r.median*100+1 : r.median })) };
     } else if (path === '/me/renaissance') body = { next: 2, requirements: RARITIES.map(r => ({ key: r === 'L' ? 'legendaries' : r === 'M' ? 'mythics' : r,
       have: 0, need: r === 'C' || r === 'R' ? 1 : 0 })) };
-    else if (path === '/me/collection') body = [];
+    else if (path === '/me/collection') body = seriesMode
+      ? seriesFixture.owned.map((id: string) => ({ characterId: id, qty: 2 })) : [];
     else throw new Error(`Unexpected request ${req.url()}`);
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) });
   });
@@ -169,9 +179,51 @@ try {
   await page.reload(); await page.locator('#wishlist-solve').click();
   await page.waitForFunction(() => document.querySelector('#status')?.textContent?.includes('Optimal wishlist'));
   assert.match(await page.locator('#wishlist-best').innerText(), /Rare/);
+  seriesMode = true;
+  await page.locator('#show-series').click(); await page.locator('#series-sync').click();
+  await page.waitForFunction(() => document.querySelector('#status')?.textContent === 'Missions, holdings and series prices synced.');
+  assert.match(await page.locator('#series-snapshot').innerText(), /3 remaining series/);
+  await page.locator('#series-solve').click();
+  await page.waitForFunction(() => document.querySelector('#status')?.textContent === 'Series analysis complete.');
+  assert.match(await page.locator('#series-best').innerText(), /Almost there/);
+  assert.match(await page.locator('#series-purchases').innerText(), /Almost there 5/);
+  await page.locator('#series-window').selectOption('30d'); await page.locator('#series-solve').click();
+  await page.waitForFunction(() => document.querySelector('#status')?.textContent === 'Series analysis complete.');
+  assert.match(await page.locator('#series-best').innerText(), /From scratch/);
+  await page.reload();
+  await page.waitForFunction(() => (document.querySelector('#series-window') as HTMLSelectElement)?.value === '30d');
+  assert.equal(await page.locator('#booster-view').isHidden(), true);
+  assert.equal(await page.locator('#wishlist-view').isHidden(), true);
+  const readSeries = () => page.evaluate(async () => ((await chrome.storage.local.get('state')).state as { series: unknown }).series);
+  const savedSeries = await readSeries();
+  seriesFail = true; await page.locator('#series-sync').click();
+  await page.waitForFunction(() => document.querySelector('#status')?.textContent?.includes('HTTP 403'));
+  assert.deepEqual(await readSeries(), savedSeries); seriesFail = false;
+  let releaseSeriesResponse = () => {};
+  priceGate = new Promise<void>(resolve => { releaseSeriesResponse = resolve; releasePendingResponse = resolve; });
+  const seriesPriceStarted = kyara.waitForRequest(req => new URL(req.url()).pathname === '/api/me/collection/prices');
+  try {
+    await Promise.all([seriesPriceStarted, page.locator('#series-sync').click()]);
+    await page.locator('#cancel').click();
+    await page.waitForFunction(() => document.querySelector('#status')?.textContent === 'Cancelling after the current request…');
+  } finally { releaseSeriesResponse(); releasePendingResponse = undefined; priceGate = undefined; }
+  await page.locator('#cancel').waitFor({ state: 'hidden' });
+  assert.deepEqual(await readSeries(), savedSeries);
+  await page.locator('summary').filter({ hasText: 'Import or export data' }).click();
+  const seriesDownload = page.waitForEvent('download'); await page.locator('#export').click();
+  const seriesBundle = JSON.parse(await readFile((await (await seriesDownload).path())!, 'utf8'));
+  assert.deepEqual(seriesBundle.series, savedSeries);
+  assert.ok(!JSON.stringify(seriesBundle).includes('must not persist'));
+  const seriesOnly = join(temporary, 'series.json'); await writeFile(seriesOnly, JSON.stringify(seriesBundle.series));
+  await page.evaluate(() => chrome.storage.local.clear()); await page.reload();
+  await page.locator('#import').setInputFiles(seriesOnly);
+  await page.waitForFunction(() => document.querySelector('#status')?.textContent === 'Series imported.');
+  await page.locator('#series-solve').click();
+  await page.waitForFunction(() => document.querySelector('#status')?.textContent === 'Series analysis complete.');
+  assert.match(await page.locator('#series-best').innerText(), /Almost there/);
   await page.screenshot({ path: join(tmpdir(), 'kyara-extension.png'), fullPage: true });
   assert.deepEqual(errors, []);
-  console.log('Browser extension passed: HiGHS WASM, all objectives, collection, account sync, credential isolation, failure preservation, and reload.');
+  console.log('Browser extension passed: HiGHS WASM, all objectives, series purchase plans, collection, account sync, credential isolation, failure preservation, and reload.');
 } finally {
   releasePendingResponse?.();
   await context.unrouteAll({ behavior: 'wait' });

@@ -77,6 +77,28 @@ The result records actual observation dates, elapsed days, medians, and sales
 counts. Sparse history is not interpolated or annualized. This is a ranking of
 past changes, not a forecast or a guarantee of current purchase prices.
 
+## Cheapest new series
+
+For each catalogue universe S with at least five distinct character IDs, remove
+series recorded as completed in `/me/progress.series`. Every returned row is a
+historical completion (`series`, `size`, `completedAt`, `claimed`); it is excluded
+even if its reward is unclaimed or the player no longer owns all its cards.
+This list does not enumerate unfinished universes: derive those from the complete
+catalogue and store them as `remaining_series`.
+
+With owned IDs O and the chosen 7-/30-day median m_c, evaluate:
+
+    cost(S) = sum_{c in S, c not in O} m_c
+
+Any missing median for an unowned card excludes that series. Owned-card prices
+are irrelevant. Exact enumeration ranks by increasing total cost, then universe
+name, without the normalized integer scores used for boosters and wishlist.
+The purchase plan lists all missing cards ordered by increasing median then ID.
+Order does not affect this fixed-price objective; there is no price forecast.
+Zero medians are valid. Fully owned universes not recorded in Missions return
+`SERIES_READY`, with zero cost and no purchase. With no priced eligible series,
+the result is `NO_ELIGIBLE_SERIES`; otherwise it is `OPTIMAL`.
+
 ## Probability models
 
 For independent replacement slot groups s with k_s draws and card probability p_sc:
@@ -115,6 +137,7 @@ Undocumented Kyara GET endpoints under `/api`:
 | `/market/prices/{id}` | Individual price summary and daily history |
 | `/me/renaissance?fresh=1`, `/me/collection?lean=1` | Rebirth requirements and holdings |
 | `/me/wishlist` | Wishlisted card IDs |
+| `/me/progress` | Missions, including historical series completions |
 
 Requests are sequential, at least one second apart, with bounded retries and
 Retry-After handling. Access denials stop collection. Browser requests use an
@@ -147,6 +170,16 @@ contains `collected_at`, optional `synthetic`, and `cards`; each card has `id`,
 card captures after the snapshot are rejected. Wishlist exports are private
 account data and should stay local.
 
+Series sync independently fetches the fresh catalogue, mission progress, holdings,
+and batch prices for missing cards in remaining eligible series only. Schema
+version 1 contains `collected_at`, optional `synthetic`, `cards` (ID, name,
+universe, nullable `median7d`/`median30d`), unique `owned` IDs, `completed_series`,
+and `remaining_series`. Solvers verify that stored remaining names match the
+catalogue and completions. Unknown/duplicate inventory IDs and malformed missions
+stop sync. Unrelated missions/account fields are discarded. Failed or cancelled
+syncs preserve the previous snapshot. This private snapshot is included in
+extension backups and can also be imported on its own.
+
 For offline imports, use `scrap --import-raw PATH --verification PATH` or
 `scrap --import-har PATH`. HARs must include successful catalogue and booster
 response bodies. Import keeps allowlisted responses and discards request credentials;
@@ -161,6 +194,7 @@ stay open. Cancellation takes effect after an in-flight request. Complete datase
 replace local storage only on success; metadata/price checkpoints allow a failed
 first collection to retry using collected metadata. Account sync uses exactly the
 two account GETs above and stores only normalized holdings and rarity criteria.
-Imported datasets are validated but require a full metadata refresh before further
+Series and wishlist syncs are separate from booster/account sync. Imported
+datasets are validated but require a full metadata refresh before further
 collection. Validation establishes consistency with published odds, not a guarantee
 about undocumented server mechanics.
