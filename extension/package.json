@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc --noEmit && node build.mjs",
-    "test": "tsx --test test/data.test.ts test/model.test.ts test/wishlist.test.ts",
+    "test": "tsx --test test/data.test.ts test/model.test.ts test/wishlist.test.ts test/series.test.ts",
     "test:browser": "tsx test/browser.ts"
   },
   "dependencies": {

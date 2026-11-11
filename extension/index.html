@@ -6,8 +6,8 @@
 </head>
 <body>
 <main>
-  <header><div><h1>Kyara Solver</h1><p>Choose your next booster or wishlist purchase. Everything stays on this device.</p></div><span class="badge">HiGHS · local</span></header>
-  <nav class="actions" aria-label="Solver"><button id="show-boosters" type="button">Boosters</button><button id="show-wishlist" type="button" class="secondary">Wishlist</button></nav>
+  <header><div><h1>Kyara Solver</h1><p>Choose your next booster, wishlist purchase or new series. Everything stays on this device.</p></div><span class="badge">Local solvers</span></header>
+  <nav class="actions" aria-label="Solver"><button id="show-boosters" type="button">Boosters</button><button id="show-wishlist" type="button" class="secondary">Wishlist</button><button id="show-series" type="button" class="secondary">New series</button></nav>
   <div id="booster-view">
   <section aria-labelledby="data-title">
     <h2 id="data-title">1. Update your data</h2>
@@ -67,6 +67,28 @@
       <ul id="wishlist-warnings"></ul>
       <details><summary>Excluded cards</summary><ul id="wishlist-exclusions"></ul></details>
       <div class="actions"><button id="wishlist-export-result" type="button" class="secondary">Export result</button><button id="wishlist-export-model" type="button" class="secondary">Export model (.lp)</button></div>
+    </section>
+  </div>
+  <div id="series-view" hidden>
+    <section aria-labelledby="series-title">
+      <h2 id="series-title">Complete a new series for the lowest cost</h2>
+      <p id="series-snapshot"></p>
+      <button id="series-sync" type="button">Sync missions, holdings &amp; prices</button>
+      <p class="muted">Keep Kyara logged in and this page open. Series need at least 5 characters. All completions recorded in Missions are excluded, including unclaimed rewards.</p>
+      <form id="series-parameters">
+        <label>Median price window<select id="series-window"><option value="7d">7 days</option><option value="30d">30 days</option></select></label>
+        <button id="series-solve" type="submit">Find cheapest new series</button>
+      </form>
+      <p class="muted">Compares the total estimated price of every missing card in each series. Owned cards cost nothing; series with unknown missing-card prices are excluded. Sync again after buying or completing a series.</p>
+    </section>
+    <section id="series-results" hidden aria-labelledby="series-result-title">
+      <h2 id="series-result-title">New series purchase plan</h2><p id="series-best"></p>
+      <div class="table-wrap"><table><thead><tr><th>Series</th><th>Owned</th><th>Missing</th><th>Estimated completion cost</th></tr></thead><tbody id="series-ranking"></tbody></table></div>
+      <h3>Cards to buy for the cheapest series</h3>
+      <div class="table-wrap"><table><thead><tr><th>ID</th><th>Card</th><th>Estimated price</th></tr></thead><tbody id="series-purchases"></tbody></table></div>
+      <ul id="series-warnings"></ul>
+      <details><summary>Excluded series</summary><ul id="series-exclusions"></ul></details>
+      <button id="series-export-result" type="button" class="secondary">Export purchase plan</button>
     </section>
   </div>
       <button id="cancel" type="button" class="secondary" hidden>Cancel</button>

@@ -1,6 +1,7 @@
 #include "choice.h"
 #include "rebirth.h"
 #include "wishlist.h"
+#include "series.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -72,6 +73,7 @@ std::string fold(std::string value) {
 void help() {
   std::cout << R"(Kyara solver 0.1.0 (C++ / OR-Tools CP-SAT)
 Usage: solve [options]
+       solve series --series-state PATH [--median-window 7d|30d]
        solve wishlist --wishlist-state PATH [--lookback-days 1|7|30] [--metric absolute|percent]
        solve universes [--dataset PATH]
        solve owned add|remove|list --owned PATH [--card-id ID] [--dataset PATH]
@@ -479,6 +481,8 @@ json run(const Options &options, const json &data, const std::map<std::string, j
 
 int main(int argc, char **argv) {
   try {
+    if (argc > 1 && std::string(argv[1]) == "series")
+      return series::cli(argc - 2, argv + 2);
     if (argc > 1 && std::string(argv[1]) == "wishlist")
       return wishlist::cli(argc - 2, argv + 2);
     auto options = parse(argc, argv);

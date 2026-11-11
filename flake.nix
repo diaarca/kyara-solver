@@ -88,13 +88,29 @@
               runHook postInstall
             '';
           };
-        in { inherit pkgs collector solver extension; };
+          build-extension = pkgs.writeShellApplication {
+            name = "build-extension";
+            runtimeInputs = [ pkgs.nodejs ];
+            text = ''
+              if [[ ! -f extension/package.json || ! -f extension/build.mjs ]]; then
+                echo "Run build-extension from the repository root." >&2
+                exit 1
+              fi
+              cd extension
+              export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+              npm ci --no-audit --no-fund
+              npm run build
+              echo "Built extension/dist/. Reload Kyara Solver in your browser's Extensions page."
+            '';
+          };
+        in { inherit pkgs collector solver extension build-extension; };
     in {
       packages = eachSystem (system: let p = forSystem system; in {
         inherit (p) collector solver extension;
         default = p.solver;
       });
       apps = eachSystem (system: let p = forSystem system; in {
+        build-extension = { type = "app"; program = "${p.build-extension}/bin/build-extension"; meta.description = "Rebuild the unpacked Chrome extension in extension/dist"; };
         scrap = { type = "app"; program = "${p.collector}/bin/scrap"; meta.description = "Update the Kyara database and JSON snapshot"; };
         solve = { type = "app"; program = "${p.solver}/bin/solve"; meta.description = "Choose a booster using profit and collection objectives"; };
         default = { type = "app"; program = "${p.solver}/bin/solve"; meta.description = "Choose a booster using CP-SAT"; };
@@ -108,6 +124,7 @@
           # Executable wrappers also work with direnv, which does not export
           # shell functions. Keep apps pointing at the actual packages above.
           packages = [
+            p.build-extension
             p.pkgs.python3 p.pkgs.python3Packages.setuptools p.pkgs.nodejs
             (p.pkgs.writeShellScriptBin "scrap" ''
               exec nix run .#scrap -- "$@"
