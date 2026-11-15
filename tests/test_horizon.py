@@ -38,6 +38,24 @@ class HorizonTests(unittest.TestCase):
         result = self.solve('--horizon', '100', '--universe', 'Black Clover', '--profit-weight', '0')
         self.assertAlmostEqual(result['best']['expected_distinct_new_cards'], 2)
 
+    def test_guaranteed_mythic_replaces_one_draw_for_the_whole_batch(self):
+        self.assertFalse(self.solve()['guaranteed_mythic'])
+        result = self.solve('--guaranteed-mythic')
+        self.assertTrue(result['guaranteed_mythic'])
+        self.assertEqual(result['best']['expected_profit'], 135)
+        self.assertEqual(result['best']['opening_context']['type'], 'guaranteed_mythic_batch')
+        self.assertEqual(self.solve('--guaranteed-mythic', '--horizon', '100')['best']['expected_profit'], 9045)
+        self.data['boosters'][0]['uses_free_packs'] = True
+        self.assertEqual(self.solve('--guaranteed-mythic', '--purchase-mode', 'free')['best']['expected_profit'], 155)
+        excluded = {row['id']: row['reasons'] for row in result['excluded']}
+        self.assertTrue(any('No Mythic' in reason for reason in excluded['b']))
+
+    def test_pity_rejects_unknown_joint_models_instead_of_using_baseline(self):
+        booster = self.data['boosters'][0]
+        booster['verification']['model'] = {'type': 'moments', 'cards': {
+            row['card_id']: row for row in booster['outcomes']}}
+        self.solve('--guaranteed-mythic', code=3)
+
     def test_invalid_horizons(self):
         for h in ['0', '-1', '1.5', '10001', 'NaN', '2x', '999999999999999999999999']:
             with self.subTest(h=h): self.solve('--horizon', h, code=2)

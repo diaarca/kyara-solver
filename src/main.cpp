@@ -1,5 +1,6 @@
 #include "choice.h"
 #include "rebirth.h"
+#include "pity.h"
 #include "wishlist.h"
 #include "series.h"
 #include <algorithm>
@@ -31,6 +32,7 @@ struct Options {
   std::vector<std::string> universes;
   double weight = 1, fee = 0;
   int64_t horizon = 1;
+  bool guaranteed_mythic = false;
 };
 
 [[noreturn]] void fail(const std::string &message) { throw std::runtime_error(message); }
@@ -71,7 +73,7 @@ std::string fold(std::string value) {
 }
 
 void help() {
-  std::cout << R"(Kyara solver 0.1.0 (C++ / OR-Tools CP-SAT)
+  std::cout << R"(Kyara solver 0.3.0 (C++ / OR-Tools CP-SAT)
 Usage: solve [options]
        solve series --series-state PATH [--median-window 7d|30d]
        solve wishlist --wishlist-state PATH [--lookback-days 1|7|30] [--metric absolute|percent]
@@ -87,6 +89,7 @@ Usage: solve [options]
   --fee NUMBER             Proportional sale fee in [0,1] (default 0)
   --purchase-mode paid|free  Chakra purchase or free-pack token (default paid)
   --horizon NUMBER         Open one booster type this many times (1..10000; default 1)
+  --guaranteed-mythic      Replace one first-slot draw with a Mythic in the entire batch
   --format text|json       Output format (default text)
   --version                Print application version
 
@@ -117,8 +120,12 @@ Options parse(int argc, char **argv) {
       std::exit(0);
     }
     if (key == "--version") {
-      std::cout << "kyara-solver 0.1.0\n";
+      std::cout << "kyara-solver 0.3.0\n";
       std::exit(0);
+    }
+    if (key == "--guaranteed-mythic") {
+      options.guaranteed_mythic = true;
+      continue;
     }
     if (index >= argc)
       fail("Missing value for " + key);
@@ -302,11 +309,23 @@ json run(const Options &options, const json &data, const std::map<std::string, j
         reasons.push_back("does not accept free packs");
       c.cost = 0;
     }
-    c.total = booster.at("outcomes").size();
+    auto evaluated = booster;
+    auto evaluation_horizon = options.horizon;
+    if (options.guaranteed_mythic && reasons.empty()) {
+      try {
+        evaluated = pity::batch(booster, cards, options.horizon);
+        evaluation_horizon = 1;
+        c.opening_context = {{"type", "guaranteed_mythic_batch"},
+                             {"description", "One first-slot draw in the entire batch is replaced by a uniformly selected pool Mythic"}};
+      } catch (const std::exception &error) {
+        reasons.push_back(std::string("Guaranteed Mythic: ") + error.what());
+      }
+    }
+    c.total = evaluated.at("outcomes").size();
     if (c.total == 0)
       reasons.push_back("missing card outcomes");
     std::set<std::string> seen;
-    for (const auto &outcome : booster.at("outcomes")) {
+    for (const auto &outcome : evaluated.at("outcomes")) {
       auto cid = id(outcome.at("card_id"));
       if (!cards.contains(cid) || !seen.insert(cid).second)
         fail("Unknown or duplicate outcome card " + cid);
@@ -316,7 +335,7 @@ json run(const Options &options, const json &data, const std::map<std::string, j
       if (probability > expected + 1e-12 || ((expected > 0) != (probability > 0)))
         fail("Inconsistent card moments");
       if (targets.contains(cid))
-        c.progress += rebirth::occurrence(probability, options.horizon);
+        c.progress += rebirth::occurrence(probability, evaluation_horizon);
       auto price = cards.at(cid).at("median" + options.window);
       if (price.is_null()) {
         c.profit_known = false;
@@ -325,12 +344,12 @@ json run(const Options &options, const json &data, const std::map<std::string, j
       } else {
         ++c.priced;
         c.proceeds +=
-            options.horizon * expected * finite_number(price, "median price") * (1 - options.fee);
+            evaluation_horizon * expected * finite_number(price, "median price") * (1 - options.fee);
       }
     }
     if (rebirth_state && options.weight < 1 && reasons.empty()) {
       try {
-        c.rebirth_progress = rebirth::evaluate(booster, cards, *rebirth_state, options.horizon);
+        c.rebirth_progress = rebirth::evaluate(evaluated, cards, *rebirth_state, evaluation_horizon);
         c.progress = c.rebirth_progress.score;
       } catch (const std::exception &error) {
         reasons.push_back(std::string("rebirth progress: ") + error.what());
@@ -347,7 +366,7 @@ json run(const Options &options, const json &data, const std::map<std::string, j
   std::sort(candidates.begin(), candidates.end(),
             [](const auto &a, const auto &b) { return a.id < b.id; });
   json result = {{"schema_version", 1},
-                 {"application_version", "0.1.0"},
+                 {"application_version", "0.3.0"},
                  {"solver", "OR-Tools CP-SAT"},
                  {"ortools_version", KYARA_ORTOOLS_VERSION},
                  {"snapshot_id", data.at("snapshot_id")},
@@ -355,6 +374,7 @@ json run(const Options &options, const json &data, const std::map<std::string, j
                  {"synthetic", data.value("synthetic", false)},
                  {"purchase_mode", options.mode},
                  {"horizon", options.horizon},
+                 {"guaranteed_mythic", options.guaranteed_mythic},
                  {"profit_weight", options.weight},
                  {"fee", options.fee},
                  {"median_window", options.window},
@@ -370,9 +390,11 @@ json run(const Options &options, const json &data, const std::map<std::string, j
                  {"status", "NO_ELIGIBLE_BOOSTER"}};
   if (options.horizon > 1)
     result["warnings"].push_back(
-        "Horizon assumes independent normal openings, fixed "
+        "Horizon assumes independent draws with the selected guarantee, fixed "
         "prices/pools/availability and sufficient opening resources; it is "
         "not a time forecast");
+  if (options.guaranteed_mythic)
+    result["warnings"].push_back("One first-slot draw in this batch is replaced by a uniformly selected Mythic from the booster pool. Natural Mythics can still drop; other pity, golden and god-pack effects are excluded.");
   if (rebirth_state) {
     result["rebirth"] = {{"next_rebirth", rebirth_state->next_rebirth},
                          {"collected_at", rebirth_state->collected_at},

@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { type Dataset, type Json, type Options, type Rebirth, RARITIES } from '../src/types';
+import { moments } from '../src/model';
 export const root = fileURLToPath(new URL('../../', import.meta.url));
 export function python(code: string) {
   const executable = process.env.PYTHON ?? (process.platform === 'win32' ? 'python' : 'python3');
@@ -28,4 +29,19 @@ export function baselineFixture(): Json {
     pack_pools: { base: [1, 2] }, rules: { rates: {}, config: { dropWeights: { ...z, C: 3, R: 1 } } },
     characters: { '1': { id: 1, rarity: 'C', dropChance: { base: .75 } }, '2': { id: 2, rarity: 'R', dropChance: { base: 1 } } },
     prices: { '1': { median7d: 4, median30d: 4 }, '2': { median7d: 8, median30d: 8 } } };
+}
+
+export function pityFixture(): Dataset {
+  const cards: Dataset['cards'] = [
+    { id: '1', name: 'Normal', universe: 'Test', rarity: 'R', median7d: 10, median30d: 8 },
+    { id: '2', name: 'Mythic A', universe: 'Test', rarity: 'M', median7d: 100, median30d: 90 },
+    { id: '3', name: 'Mythic B', universe: 'Test', rarity: 'M', median7d: 200, median30d: 180 },
+    { id: '4', name: 'Mythic C', universe: 'Test', rarity: 'M', median7d: 300, median30d: 270 },
+  ];
+  const model = { type: 'independent_slots', slots: [
+    { draws: 2, probabilities: { '1': .5, '2': 1/6, '3': 1/6, '4': 1/6 } },
+  ] };
+  return { schema_version: 1, snapshot_id: 'synthetic-pity', synthetic: true, collected_at: '2026-11-15T12:00:00Z', cards,
+    boosters: [{ id: 'pity', name: 'Mythic pool', cost: 20, available: true, uses_free_packs: true,
+      issues: [], verification: { model }, outcomes: moments(model, new Map(cards.map(c => [c.id, c]))) }] };
 }

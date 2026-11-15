@@ -254,6 +254,7 @@ function options(): Options {
     check(state.rebirth, 'Sync holdings first, or uncheck “Use synced holdings” to enter card IDs');
   return {
     horizon: Number(input('horizon').value),
+    guaranteed_mythic: input('guaranteed-mythic').checked,
     goal,
     mode: select('mode').value as Options['mode'],
     window: select('window').value as Options['window'],
@@ -284,7 +285,7 @@ function showResult(r: Result, o: Options) {
   result = r;
   el('results').hidden = false;
   el('horizon-summary').textContent =
-    `Expected outcome from ${r.horizon} openings of the same booster type.`;
+    `Expected outcome from ${r.horizon} openings of the same booster type.${r.guaranteed_mythic ? ' One booster guarantees a Mythic by replacing its first slot.' : ''}`;
   el('best').textContent =
     r.status === 'REBIRTH_RARITY_TARGETS_MET'
       ? 'All rarity targets are already met.'
@@ -411,6 +412,7 @@ async function init() {
   }
   if (state.options) {
     input('horizon').value = String(state.options.horizon ?? 1);
+    input('guaranteed-mythic').checked = state.options.guaranteed_mythic ?? false;
     select('mode').value = state.options.mode;
     select('goal').value = state.options.goal;
     select('window').value = state.options.window;

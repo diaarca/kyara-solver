@@ -31,6 +31,8 @@
         <label>Number of boosters<input id="horizon" type="number" min="1" max="10000" step="1" value="1" required></label>
         <label>Selling fee (%)<input id="fee" type="number" min="0" max="100" step="0.1" value="0" required></label>
       </div>
+      <label class="inline"><input id="guaranteed-mythic" type="checkbox"> At least one Mythic guaranteed in this batch (pity)</label>
+      <p class="muted">Replaces the first card slot of one booster with a random Mythic from that booster's pool, for the entire number of boosters entered. Other boosters can still drop Mythics naturally. Enable only when your pity guarantees a Mythic within this batch.</p>
       <div id="progress-fields" hidden>
         <label>Profit weight: <output id="weight-label">0%</output><input id="weight" type="range" min="0" max="100" step="1" value="0"></label>
         <p class="muted">0% focuses on progress; 50% gives profit and progress equal normalized influence.</p>
@@ -104,7 +106,7 @@
     <details><summary>Excluded boosters</summary><ul id="exclusions"></ul></details>
     <div class="actions"><button id="export-result" type="button" class="secondary">Export result</button><button id="export-model" type="button" class="secondary">Export mathematical model (.lp)</button></div>
   </section>
-  <footer>Read-only analysis. Normal openings only; golden, pity and god-pack effects are excluded. Historical prices do not guarantee sales.</footer>
+  <footer>Read-only analysis. Optional one-Mythic batch guarantee; other pity, golden and god-pack effects are excluded. Historical prices do not guarantee sales.</footer>
 </main>
 <script type="module" src="app.js"></script>
 </body>
