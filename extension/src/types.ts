@@ -18,6 +18,7 @@ export interface Rebirth {
   owned: string[]; requirements: Record<Rarity, { current: number; target: number }>;
 }
 export interface Options {
+  guaranteed_mythic?: boolean;
   horizon?: number; mode: 'free' | 'paid'; goal: 'profit' | 'collection' | 'rebirth'; weight: number;
   window: '7d' | '30d'; fee: number; universes: string[]; owned: string[]; rebirth?: Rebirth;
 }
@@ -29,6 +30,7 @@ export interface Candidate {
 export interface Result {
   status: 'OPTIMAL' | 'NO_ELIGIBLE_BOOSTER' | 'REBIRTH_RARITY_TARGETS_MET'; solver: string;
   snapshot_id: string; collected_at: string; horizon: number; ranking: Candidate[]; best: Candidate | null;
+  guaranteed_mythic: boolean;
   excluded: { id: string; reasons: string[] }[]; warnings: string[];
   recommend_paid_purchase: boolean | null; model: string;
 }

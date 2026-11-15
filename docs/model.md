@@ -4,8 +4,8 @@
 
 For booster b and card c, N_bc is the number of copies obtained. The dataset
 stores both expected copies E[N_bc] and occurrence probability Pr(N_bc >= 1).
-For H independent openings of one booster type, with historical median m_c,
-sale fee f, and per-opening cost C_b:
+With the Mythic guarantee disabled, for H independent openings of one booster
+type, with historical median m_c, sale fee f, and per-opening cost C_b:
 
     profit P_b(H) = H * (sum_c E[N_bc] * m_c * (1-f) - C_b)
     completion U_b(H) = sum_{c in missing selected cards} (1-(1-Pr(N_bc >= 1))^H)
@@ -17,6 +17,31 @@ included in profit. Free mode sets opening cost to zero. The horizon is 1–1000
 resources are assumed sufficient. This selects one booster type, not a mix.
 Result objectives are horizon totals; `cost` remains per-opening and `total_cost`
 is H times that cost. The result also records `horizon`.
+
+The optional `guaranteed_mythic` toggle (CLI `--guaranteed-mythic`) replaces the
+first slot of one booster with a uniform draw among the Mythic cards in that
+booster's verified outcomes. It defaults to false, including for older saved
+options. This is a user-supplied batch guarantee, not an inference from the
+account's pity counter or a simulation of resets/repeated pity triggers.
+
+For original slot groups s, let k'_s = H*k_s minus one for the first group,
+unchanged for the other groups. Add one draw with probabilities q_c = 1/|M_b|
+for Mythics in the booster pool, zero otherwise. Evaluate batch moments:
+
+    expected copies E_c = sum_s k'_s * p_sc + q_c
+    occurrence A_c = 1 - (1-q_c) * product_s (1-p_sc)^k'_s
+    profit = sum_c E_c * m_c * (1-f) - H*C_b
+    completion = sum_{c in missing selected cards} A_c
+
+Only one slot is replaced across the entire horizon, preserving card count and
+opening cost. Other slots retain natural Mythic odds. Collection still excludes
+owned cards. Rebirth uses the same adjusted independent slots and its existing
+distinct-card cap, including the possibility that the guaranteed Mythic is owned.
+Unsupported moment-only models and pools without Mythics are excluded when the
+toggle is enabled. Missing prices matter only for cards that can still occur.
+Results record `guaranteed_mythic`; exported results include the saved option,
+and CLI candidate opening contexts identify the adjusted batch model. Stored
+baseline datasets are not modified.
 
 For rebirth, D_r = max(target_r - current_r, 0), K_br is the number of distinct
 unowned cards of rarity r obtained across H openings, and A contains unfinished
@@ -34,8 +59,9 @@ When caps cannot bind, card occurrence probabilities suffice. Otherwise a dynami
 program tracks capped distinct counts. With m missing cards and a draw hitting
 them with probability q, state k advances with probability q*(m-k)/m; the cap is
 absorbing. This requires uniform per-slot probabilities among missing cards for
-caps above one. Each slot group's draws are repeated H times. These uniform
-transition kernels commute, so grouped identical draws preserve the result.
+caps above one. Use H repeats of each baseline slot group, or the adjusted batch
+counts above when the guarantee is enabled. These uniform transition kernels
+commute, so grouped identical draws preserve the result.
 Binding caps have a 10-million-cell work limit. Incompatible or insufficient
 models are excluded.
 
@@ -113,7 +139,8 @@ once. Sample validation is distinguished from exhaustive detail validation.
 Published percentages can replace base weights for special boosters, with rounding
 tolerances recorded. Contradictory recipes, including the observed daily-pack
 inconsistency, are excluded. Golden, pity, god-pack, and player-state effects are
-outside this baseline; liquidity, sale timing, and market impact are also omitted.
+outside this collected baseline; the optional guarantee above adjusts it only at
+solve time. Liquidity, sale timing, and market impact are also omitted.
 
 Custom verification maps booster IDs to `pack_sha256`, `mechanics_sha256`,
 `pool_complete`, `verified_at`, `evidence`, and `model`. Use

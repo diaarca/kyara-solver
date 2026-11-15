@@ -41,7 +41,8 @@ double capped_new_cards(const Json& booster, const std::vector<std::string>& mis
   int64_t draws_total = 0;
   for (const auto& slot : slots) {
     auto draws = count(slot.at("draws"), "Slot draws");
-    if (draws < 1 || draws > 10000 || draws_total > 100000 - draws)
+    // Derived batch models expand up to 100000 draws over 10000 openings.
+    if (draws < 1 || draws > 1000000000 || draws_total > 1000000000 - draws)
       invalid("Invalid or excessive slot draw count");
     draws_total += draws;
   }

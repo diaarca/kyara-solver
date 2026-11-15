@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Kyara Solver",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Rank Kyara boosters by profit, collection completion, and rebirth progress. Everything stays local.",
   "minimum_chrome_version": "120",
   "permissions": ["storage", "unlimitedStorage", "scripting"],

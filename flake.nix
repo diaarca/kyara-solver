@@ -19,7 +19,7 @@
           };
           collector = pkgs.python3Packages.buildPythonApplication {
             pname = "kyara-collector";
-            version = "0.1.0";
+            version = "0.3.0";
             src = source;
             pyproject = true;
             build-system = [ pkgs.python3Packages.setuptools ];
@@ -29,7 +29,7 @@
           };
           solver = pkgs.stdenv.mkDerivation {
             pname = "kyara-solver";
-            version = "0.1.0";
+            version = "0.3.0";
             src = source;
             nativeBuildInputs = [ pkgs.cmake pkgs.ninja pkgs.pkg-config ];
             # OR-Tools' CMake config also requires its bundled backend targets.
@@ -50,7 +50,7 @@
           };
           extension = pkgs.buildNpmPackage {
             pname = "kyara-extension";
-            version = "0.1.0";
+            version = "0.3.0";
             src = pkgs.lib.fileset.toSource {
               root = ./.;
               fileset = pkgs.lib.fileset.unions [
@@ -64,7 +64,7 @@
               ];
             };
             sourceRoot = "source/extension";
-            npmDepsHash = "sha256-k51sBpytRE2COp/XRvxo6vW++tRWfOcOa5QsvY5RKLI=";
+            npmDepsHash = "sha256-ZWGEO2LdnOZ3/dcRoKMJkFiA/WPNYVhIMyWYJz8kk3c=";
             nativeBuildInputs = [ pkgs.zip ];
             nativeCheckInputs = [ pkgs.python3 solver ];
             env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";

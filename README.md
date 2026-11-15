@@ -154,13 +154,26 @@ Profit and distinct-card progress cover the entire horizon, accounting for
 duplicates and remaining rebirth targets. Prices, pools, and availability stay
 constant, and sufficient resources are assumed. This chooses one type, not a mix.
 
+Enable **At least one Mythic guaranteed in this batch (pity)** in the Boosters
+view, or pass `--guaranteed-mythic`, when your pity guarantees a Mythic within the
+entered number of boosters. It replaces the first card slot of one booster with
+a uniformly selected Mythic from that booster's pool. The batch receives one
+guaranteed slot in total; natural Mythics may still drop in the remaining slots.
+Profit, collection, and rebirth scores all use this adjusted batch. It defaults
+to off, does not infer your pity counter, and excludes boosters without a Mythic
+pool or an independent-slot model. The result and saved options record the toggle.
+
+```sh
+solve --horizon 10 --guaranteed-mythic
+```
+
 Other options: `--dataset PATH`, `--median-window 7d|30d`, `--fee FRACTION`,
 `--format text|json`. See `solve --help` and `scrap --help` for all options.
 Solving uses saved files and works offline.
 
 Paid mode subtracts cost; free mode considers free-token and zero-cost packs.
 Missing prices exclude boosters when profit has positive weight. Unverified odds
-are excluded. Golden, pity, and god-pack effects are not modeled. Historical
+are excluded. Golden, god-pack, and other pity effects are not modeled. Historical
 medians do not guarantee sale prices. The tool never opens packs or trades.
 Exit codes: 0 success, 2 invalid input/collection failure, 3 no eligible booster.
 

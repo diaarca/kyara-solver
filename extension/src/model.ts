@@ -18,6 +18,7 @@ import {
   type Card,
   type Outcome,
   type ProbabilityModel,
+  type Slot,
 } from './types';
 
 export function moments(model: ProbabilityModel, cards: Map<string, unknown>): Outcome[] {
@@ -42,7 +43,6 @@ export function moments(model: ProbabilityModel, cards: Map<string, unknown>): O
     model.type === 'independent_slots' && Array.isArray(model.slots) && model.slots.length > 0,
     'Missing independent-slot model',
   );
-  const values = new Map<string, { expected: number; absent: number }>();
   let totalDraws = 0;
   for (const slot of model.slots) {
     const draws = integer(slot.draws, 'slot draws', 10000);
@@ -52,12 +52,21 @@ export function moments(model: ProbabilityModel, cards: Map<string, unknown>): O
     for (const [id, p] of Object.entries(slot.probabilities)) {
       check(cards.has(id), `Unknown model card ${id}`);
       sum += number(p, 'slot probability', 1);
-      const v = values.get(id) ?? { expected: 0, absent: 1 };
-      v.expected += draws * p;
-      v.absent *= (1 - p) ** draws;
-      values.set(id, v);
     }
     check(Math.abs(sum - 1) < 1e-9, 'Slot probabilities must sum to one');
+  }
+  return slotMoments(model.slots);
+}
+
+function slotMoments(slots: Slot[]): Outcome[] {
+  const values = new Map<string, { expected: number; absent: number }>();
+  for (const slot of slots) {
+    for (const [id, p] of Object.entries(slot.probabilities)) {
+      const v = values.get(id) ?? { expected: 0, absent: 1 };
+      v.expected += slot.draws * p;
+      v.absent *= (1 - p) ** slot.draws;
+      values.set(id, v);
+    }
   }
   return [...values]
     .sort(([a], [b]) => compareIds(a, b))
@@ -67,6 +76,30 @@ export function moments(model: ProbabilityModel, cards: Map<string, unknown>): O
       expected_copies: v.expected,
       occurrence_probability: 1 - v.absent,
     }));
+}
+
+function mythicBatch(b: Booster, cards: Map<string, Card>, horizon: number): Booster {
+  const model = b.verification?.model;
+  check(
+    model?.type === 'independent_slots' && model.slots?.length,
+    'Guaranteed Mythic requires an independent-slot model',
+  );
+  const mythics = b.outcomes.filter(
+    o => cards.get(o.card_id)!.rarity === 'M' && o.expected_copies > 0,
+  );
+  check(mythics.length > 0, 'No Mythic cards in this booster pool');
+  const slots = model.slots.map(slot => ({ ...slot, draws: slot.draws * horizon }));
+  slots[0].draws--;
+  const batchSlots = slots.filter(slot => slot.draws > 0);
+  batchSlots.push({
+    draws: 1,
+    probabilities: Object.fromEntries(mythics.map(o => [o.card_id, 1 / mythics.length])),
+  });
+  return {
+    ...b,
+    outcomes: slotMoments(batchSlots),
+    verification: { ...b.verification, model: { type: 'independent_slots', slots: batchSlots } },
+  };
 }
 
 export function validateDataset(input: unknown): Dataset {
@@ -238,6 +271,11 @@ export function rebirthProgress(b: Booster, cards: Map<string, Card>, state: Reb
 export function formulate(dataset: Dataset, options: Options): Result {
   const horizon = integer(options.horizon ?? 1, 'horizon', 10000);
   check(horizon > 0, 'Horizon must be in [1,10000]');
+  check(
+    options.guaranteed_mythic === undefined || typeof options.guaranteed_mythic === 'boolean',
+    'Invalid guaranteed Mythic option',
+  );
+  const guaranteedMythic = options.guaranteed_mythic ?? false;
   number(options.weight, 'profit weight', 1);
   number(options.fee, 'selling fee', 1);
   check(
@@ -267,11 +305,14 @@ export function formulate(dataset: Dataset, options: Options): Result {
     snapshot_id: dataset.snapshot_id,
     collected_at: dataset.collected_at,
     horizon,
+    guaranteed_mythic: guaranteedMythic,
     ranking: [],
     best: null,
     excluded: [],
     warnings: [
-      'Normal-opening baseline; golden, pity and god-pack effects are excluded.',
+      guaranteedMythic
+        ? 'One first-slot draw in this batch is replaced by a uniformly selected Mythic from the booster pool. Natural Mythics can still drop; other pity, golden and god-pack effects are excluded.'
+        : 'Normal-opening baseline; golden, pity and god-pack effects are excluded.',
       'Historical medians estimate resale value; sales are not guaranteed.',
     ],
     recommend_paid_purchase: null,
@@ -279,7 +320,7 @@ export function formulate(dataset: Dataset, options: Options): Result {
   };
   if (horizon > 1)
     result.warnings.push(
-      'Horizon assumes independent normal openings, fixed prices/pools/availability and sufficient opening resources; it is not a time forecast.',
+      'Horizon assumes independent draws with the selected guarantee, fixed prices/pools/availability and sufficient opening resources; it is not a time forecast.',
     );
   if (dataset.synthetic) result.warnings.push('Synthetic fixture: not live Kyara data.');
   if (Date.now() - Date.parse(dataset.collected_at) > 86400000)
@@ -307,27 +348,36 @@ export function formulate(dataset: Dataset, options: Options): Result {
     if (options.mode === 'free' && b.cost !== 0 && !b.uses_free_packs)
       reasons.push('Does not accept free packs');
     if (!b.outcomes.length) reasons.push('Missing card outcomes');
+    let evaluated = b, evaluationHorizon = horizon;
+    if (guaranteedMythic && !reasons.length) {
+      try {
+        evaluated = mythicBatch(b, cards, horizon);
+        evaluationHorizon = 1;
+      } catch (e) {
+        reasons.push(`Guaranteed Mythic: ${(e as Error).message}`);
+      }
+    }
     const cost = options.mode === 'free' ? 0 : (b.cost ?? 0);
     let proceeds = 0,
       progress = 0,
       known = 0;
-    for (const o of b.outcomes) {
+    for (const o of evaluated.outcomes) {
       const card = cards.get(o.card_id)!;
       if (options.goal === 'collection' && selected.has(card.universe) && !owned.has(card.id))
-        progress += occurrence(o.occurrence_probability, horizon);
+        progress += occurrence(o.occurrence_probability, evaluationHorizon);
       const price = card[`median${options.window}`];
       if (price === null) {
         if (options.weight > 0)
           reasons.push(`Missing ${options.window} median for card ${card.id}`);
       } else {
         known++;
-        proceeds += horizon * o.expected_copies * price * (1 - options.fee);
+        proceeds += evaluationHorizon * o.expected_copies * price * (1 - options.fee);
       }
     }
     let byRarity;
     if (state && options.weight < 1 && !reasons.length) {
       try {
-        const p = rebirthProgress(b, cards, state, horizon);
+        const p = rebirthProgress(evaluated, cards, state, evaluationHorizon);
         progress = p.score;
         byRarity = p.byRarity;
       } catch (e) {
@@ -342,12 +392,12 @@ export function formulate(dataset: Dataset, options: Options): Result {
         name: b.name,
         cost,
         total_cost: horizon * cost,
-        expected_profit: known === b.outcomes.length ? proceeds - horizon * cost : null,
+        expected_profit: known === evaluated.outcomes.length ? proceeds - horizon * cost : null,
         progress,
         normalized_profit: 0,
         normalized_progress: 0,
         score: 0,
-        price_coverage: { known, total: b.outcomes.length },
+        price_coverage: { known, total: evaluated.outcomes.length },
         rebirth_by_rarity: byRarity,
       });
   }
